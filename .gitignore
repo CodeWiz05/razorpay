@@ -1,1 +1,13 @@
 venv/
+data_orders.csv
+
+# python
+__pycache__/
+*.pyc
+
+# model + intermediate artifacts (regenerable by re-running train.py / train_fraud.py)
+*.joblib
+*.npy
+
+# real third-party data (not ours to redistribute)
+creditcard.csv
