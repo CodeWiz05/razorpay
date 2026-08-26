@@ -11,3 +11,5 @@ __pycache__/
 
 # real third-party data (not ours to redistribute)
 creditcard.csv
+
+throw.py

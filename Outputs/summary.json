@@ -16,6 +16,8 @@
   "baseline_precision":0.2818150802,
   "baseline_recall":0.5042735043,
   "baseline_cost":198785.0,
+  "brier_raw":0.214687177,
+  "brier_calibrated":0.1260225235,
   "cost_fn":180.0,
   "cost_fp":25.0
 }

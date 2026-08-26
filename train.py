@@ -16,13 +16,16 @@ from sklearn.ensemble import HistGradientBoostingClassifier
 from xgboost import XGBClassifier
 from sklearn.metrics import (
     precision_recall_curve, average_precision_score, roc_auc_score,
-    precision_score, recall_score, f1_score, confusion_matrix
+    precision_score, recall_score, f1_score, confusion_matrix, brier_score_loss
 )
+from sklearn.isotonic import IsotonicRegression
+from sklearn.inspection import permutation_importance
 import joblib
+import json
 
 from features import load_features, TARGET
 
-OUT = "C:/Numair/Coding/Razorpay/Outputs"
+OUT = "C:/Numair/Coding/Razorpay/outputs"
 
 df, feature_cols = load_features()
 df = df.sort_values("order_date").reset_index(drop=True)
@@ -146,7 +149,51 @@ print(f"\n[Rule baseline on TEST] precision={bp:.3f} recall={br:.3f} cost=₹{bc
 xgb_test_proba = xgb.predict_proba(Xtest)[:, 1]
 xgb_test_prauc = average_precision_score(ytest, xgb_test_proba)
 xgb_test_rocauc = roc_auc_score(ytest, xgb_test_proba)
+#print(f"\n[XGB comparison on TEST] PR-AUC={xgb_test_prauc:.3f} ROC-AUC={xgb_test_rocauc:.3f}")
+
 print(f"\n[XGB comparison on TEST] PR-AUC={xgb_test_prauc:.3f} ROC-AUC={xgb_test_rocauc:.3f}")
+
+# ---------------- Calibration (isotonic, fit on VAL) ------------------------
+# Recreates the calibration step your project notes describe but that has
+# no corresponding file in this codebase -- see chat for why this is being
+# added now rather than assumed already done.
+calibrator = IsotonicRegression(out_of_bounds="clip")
+calibrator.fit(val_proba_hgb, yval)
+test_proba_calibrated = calibrator.predict(test_proba)
+brier_raw = brier_score_loss(ytest, test_proba)
+brier_cal = brier_score_loss(ytest, test_proba_calibrated)
+print(f"\nBrier score (raw):        {brier_raw:.4f}")
+print(f"Brier score (calibrated): {brier_cal:.4f}")
+
+# ---------------- Reason codes: importance-ranked, direction-aware ---------
+# Global permutation importance = WHICH features matter most overall.
+# Mean feature value among returned vs. non-returned TRAIN orders = WHICH
+# DIRECTION each feature pushes risk. Serving time then checks a given
+# order's own values against that direction -- coarse, FICO-style reason
+# codes, not a raw model-internals dump. See serve.py for how this is used.
+perm_result = permutation_importance(
+    hgb, Xval, yval, scoring="average_precision", n_repeats=10, random_state=42
+)
+importances = perm_result.importances_mean
+
+reason_reference = {}
+for i, feat in enumerate(feature_cols):
+    mean_returned = Xtr.loc[ytr == 1, feat].mean()
+    mean_not_returned = Xtr.loc[ytr == 0, feat].mean()
+    direction = "high" if mean_returned >= mean_not_returned else "low"
+    reason_reference[feat] = {
+        "importance": float(importances[i]),
+        "direction": direction,
+        "mean_returned": float(mean_returned),
+        "mean_not_returned": float(mean_not_returned),
+    }
+
+with open("outputs/reason_code_reference.json", "w") as f:
+    json.dump(reason_reference, f, indent=2)
+with open("outputs/feature_columns.json", "w") as f:
+    json.dump(feature_cols, f, indent=2)
+joblib.dump(calibrator, "outputs/calibrator.joblib")
+print("Saved calibrator.joblib, reason_code_reference.json, feature_columns.json to outputs/")
 
 # ---------------- Save everything for the report / artifact ----------------
 joblib.dump(hgb, f"{OUT}/model.joblib")
@@ -163,6 +210,7 @@ summary = {
     "test_cost": test_cost, "test_cost_flag_none": test_cost_flag_none,
     "savings": savings, "savings_pct": savings / test_cost_flag_none,
     "baseline_precision": bp, "baseline_recall": br, "baseline_cost": bcost,
+    "brier_raw": brier_raw, "brier_calibrated": brier_cal,
     "cost_fn": COST_FN, "cost_fp": COST_FP,
 }
 pd.Series(summary).to_json(f"{OUT}/summary.json", indent=2)

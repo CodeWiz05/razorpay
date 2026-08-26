@@ -1,16 +1,20 @@
 import json
 import numpy as np
+import joblib
 import matplotlib.pyplot as plt
 from sklearn.metrics import precision_recall_curve
 from sklearn.calibration import calibration_curve
 
-OUT = "C:/Numair/Coding/Razorpay/Outputs"
+OUT = "C:/Numair/Coding/Razorpay/outputs"
 
 val_proba = np.load(f"{OUT}/val_proba_hgb.npy")
 val_y = np.load(f"{OUT}/val_y.npy")
 test_proba = np.load(f"{OUT}/test_proba.npy")
 test_y = np.load(f"{OUT}/test_y.npy")
 summary = json.load(open(f"{OUT}/summary.json"))
+
+calibrator = joblib.load(f"{OUT}/calibrator.joblib")
+test_proba_calibrated = calibrator.predict(test_proba)
 
 COST_FN, COST_FP = summary["cost_fn"], summary["cost_fp"]
 best_t = summary["best_threshold"]
@@ -46,10 +50,14 @@ axes[1].set_title(f"Cost vs Threshold\n(FN=₹{COST_FN:.0f}, FP=₹{COST_FP:.0f}
 axes[1].legend()
 axes[1].grid(alpha=0.3)
 
-# --- 3. Calibration curve (test set) ---
-frac_pos, mean_pred = calibration_curve(test_y, test_proba, n_bins=10, strategy="quantile")
+# --- 3. Calibration curve (test set): raw vs. isotonic-calibrated ---
+# n_test=10,000, ~1,638 positives -- enough for quantile bins to be
+# genuinely informative here, unlike the fraud artifact's 75-positive case.
+frac_pos_raw, mean_pred_raw = calibration_curve(test_y, test_proba, n_bins=10, strategy="quantile")
+frac_pos_cal, mean_pred_cal = calibration_curve(test_y, test_proba_calibrated, n_bins=10, strategy="quantile")
 axes[2].plot([0, 1], [0, 1], "k--", alpha=0.4, label="perfectly calibrated")
-axes[2].plot(mean_pred, frac_pos, marker="o", color="#7c3aed", label="HGB model")
+axes[2].plot(mean_pred_raw, frac_pos_raw, marker="o", color="#94a3b8", label="raw HGB")
+axes[2].plot(mean_pred_cal, frac_pos_cal, marker="o", color="#7c3aed", label="isotonic-calibrated")
 axes[2].set_xlabel("Mean predicted return probability")
 axes[2].set_ylabel("Observed return rate")
 axes[2].set_title("Calibration (Test)")

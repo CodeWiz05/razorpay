@@ -3,7 +3,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from sklearn.metrics import precision_recall_curve
 
-OUT = "C:/Numair/Coding/Razorpay/Outputs"
+OUT = "C:/Numair/Coding/Razorpay/outputs"
 
 val_proba = np.load(f"{OUT}/val_proba_fraud.npy")
 val_y = np.load(f"{OUT}/val_y_fraud.npy")

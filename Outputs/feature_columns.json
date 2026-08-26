@@ -1,0 +1,19 @@
+[
+  "price",
+  "discount_pct",
+  "delivery_days",
+  "is_apparel",
+  "customer_prior_orders",
+  "customer_past_return_rate",
+  "category_Beauty",
+  "category_Electronics",
+  "category_Fashion",
+  "category_Footwear",
+  "category_Grocery",
+  "category_Home",
+  "payment_mode_COD",
+  "payment_mode_Prepaid",
+  "pincode_tier_Tier1",
+  "pincode_tier_Tier2",
+  "pincode_tier_Tier3"
+]

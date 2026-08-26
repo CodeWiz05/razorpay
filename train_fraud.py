@@ -48,7 +48,7 @@ from sklearn.metrics import brier_score_loss
 import joblib
 
 DATA_PATH = "C:/Numair/Coding/Razorpay/creditcard.csv"
-OUT = "C:/Numair/Coding/Razorpay/Outputs"
+OUT = "C:/Numair/Coding/Razorpay/outputs"
 
 df = pd.read_csv(DATA_PATH).sort_values("Time").reset_index(drop=True)
 feature_cols = [c for c in df.columns if c.startswith("V")] + ["Amount"]

@@ -4,3 +4,7 @@ matplotlib
 scikit-learn == 1.9.0
 joblib
 xgboost == 3.4.1
+fastapi
+uvicorn
+streamlit
+requests
