@@ -13,6 +13,7 @@ import numpy as np
 import pandas as pd
 from sklearn.linear_model import LogisticRegression
 from sklearn.ensemble import HistGradientBoostingClassifier
+from xgboost import XGBClassifier
 from sklearn.metrics import (
     precision_recall_curve, average_precision_score, roc_auc_score,
     precision_score, recall_score, f1_score, confusion_matrix
@@ -20,6 +21,8 @@ from sklearn.metrics import (
 import joblib
 
 from features import load_features, TARGET
+
+OUT = "C:/Numair/Coding/Razorpay/Outputs"
 
 df, feature_cols = load_features()
 df = df.sort_values("order_date").reset_index(drop=True)
@@ -53,7 +56,7 @@ val_proba_lr = logreg.predict_proba(Xval)[:, 1]
 print(f"[LogReg] val PR-AUC={average_precision_score(yval, val_proba_lr):.3f} "
       f"ROC-AUC={roc_auc_score(yval, val_proba_lr):.3f}")
 
-# ---------------- Model 2: HistGradientBoosting (main model) ---------------
+# ---------------- Model 2: HistGradientBoosting (PRIMARY model) ------------
 hgb = HistGradientBoostingClassifier(
     max_iter=300, learning_rate=0.06, max_depth=5,
     class_weight="balanced", random_state=42, early_stopping=True,
@@ -63,6 +66,18 @@ hgb.fit(Xtr, ytr)
 val_proba_hgb = hgb.predict_proba(Xval)[:, 1]
 print(f"[HGB]    val PR-AUC={average_precision_score(yval, val_proba_hgb):.3f} "
       f"ROC-AUC={roc_auc_score(yval, val_proba_hgb):.3f}")
+
+# ---------------- Model 3: XGBoost (comparison only) ----
+scale_pos_weight = (ytr == 0).sum() / (ytr == 1).sum()
+xgb = XGBClassifier(
+    n_estimators=300, learning_rate=0.06, max_depth=5,
+    scale_pos_weight=scale_pos_weight, random_state=42,
+    eval_metric="aucpr", n_jobs=-1,
+)
+xgb.fit(Xtr, ytr)
+val_proba_xgb = xgb.predict_proba(Xval)[:, 1]
+print(f"[XGB]    val PR-AUC={average_precision_score(yval, val_proba_xgb):.3f} "
+      f"ROC-AUC={roc_auc_score(yval, val_proba_xgb):.3f}")
 
 # ---------------- Cost-sensitive threshold selection (on VAL only) ---------
 # Cost assumptions (documented, editable):
@@ -128,12 +143,17 @@ bcost = (((baseline_flag_test == 1) & (ytest.values == 0)).sum() * COST_FP +
          ((baseline_flag_test == 0) & (ytest.values == 1)).sum() * COST_FN)
 print(f"\n[Rule baseline on TEST] precision={bp:.3f} recall={br:.3f} cost=₹{bcost:,.0f}")
 
+xgb_test_proba = xgb.predict_proba(Xtest)[:, 1]
+xgb_test_prauc = average_precision_score(ytest, xgb_test_proba)
+xgb_test_rocauc = roc_auc_score(ytest, xgb_test_proba)
+print(f"\n[XGB comparison on TEST] PR-AUC={xgb_test_prauc:.3f} ROC-AUC={xgb_test_rocauc:.3f}")
+
 # ---------------- Save everything for the report / artifact ----------------
-joblib.dump(hgb, "/home/claude/return_risk/outputs/model.joblib")
-np.save("/home/claude/return_risk/outputs/val_proba_hgb.npy", val_proba_hgb)
-np.save("/home/claude/return_risk/outputs/val_y.npy", yval.values)
-np.save("/home/claude/return_risk/outputs/test_proba.npy", test_proba)
-np.save("/home/claude/return_risk/outputs/test_y.npy", ytest.values)
+joblib.dump(hgb, f"{OUT}/model.joblib")
+np.save(f"{OUT}/val_proba_hgb.npy", val_proba_hgb)
+np.save(f"{OUT}/val_y.npy", yval.values)
+np.save(f"{OUT}/test_proba.npy", test_proba)
+np.save(f"{OUT}/test_y.npy", ytest.values)
 
 summary = {
     "best_threshold": best_threshold,
@@ -145,5 +165,5 @@ summary = {
     "baseline_precision": bp, "baseline_recall": br, "baseline_cost": bcost,
     "cost_fn": COST_FN, "cost_fp": COST_FP,
 }
-pd.Series(summary).to_json("/home/claude/return_risk/outputs/summary.json", indent=2)
+pd.Series(summary).to_json(f"{OUT}/summary.json", indent=2)
 print("\nSaved model + arrays + summary.json to outputs/")

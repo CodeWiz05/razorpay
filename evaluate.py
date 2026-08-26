@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 from sklearn.metrics import precision_recall_curve
 from sklearn.calibration import calibration_curve
 
-OUT = "/home/claude/return_risk/outputs"
+OUT = "C:/Numair/Coding/Razorpay/Outputs"
 
 val_proba = np.load(f"{OUT}/val_proba_hgb.npy")
 val_y = np.load(f"{OUT}/val_y.npy")

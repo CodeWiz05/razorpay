@@ -22,9 +22,10 @@ NUMERIC = [
     "customer_prior_orders", "customer_past_return_rate",
 ]
 TARGET = "returned"
+DATA_PATH = "C:/Numair/Coding/Razorpay/data_orders.csv"
 
 
-def load_features(path="/home/claude/return_risk/data/orders.csv"):
+def load_features(path=DATA_PATH):
     df = pd.read_csv(path, parse_dates=["order_date"])
     df = pd.get_dummies(df, columns=CATEGORICAL, drop_first=False)
     dummy_cols = [c for c in df.columns

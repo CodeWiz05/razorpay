@@ -37,6 +37,7 @@ artifact's costs.
 import numpy as np
 import pandas as pd
 from sklearn.ensemble import HistGradientBoostingClassifier
+from xgboost import XGBClassifier
 from sklearn.metrics import (
     precision_recall_curve, average_precision_score, roc_auc_score,
     precision_score, recall_score, f1_score, confusion_matrix
@@ -46,8 +47,8 @@ from sklearn.frozen import FrozenEstimator
 from sklearn.metrics import brier_score_loss
 import joblib
 
-DATA_PATH = "/home/claude/return_risk/fraud_artifact/creditcard.csv"
-OUT = "/home/claude/return_risk/fraud_artifact/outputs"
+DATA_PATH = "C:/Numair/Coding/Razorpay/creditcard.csv"
+OUT = "C:/Numair/Coding/Razorpay/Outputs"
 
 df = pd.read_csv(DATA_PATH).sort_values("Time").reset_index(drop=True)
 feature_cols = [c for c in df.columns if c.startswith("V")] + ["Amount"]
@@ -69,16 +70,36 @@ Xtr, ytr = train[feature_cols], train[TARGET]
 Xval, yval = val[feature_cols], val[TARGET]
 Xtest, ytest = test[feature_cols], test[TARGET]
 
-# ---------------- Model: HistGradientBoosting (same choice as primary) -----
-hgb = HistGradientBoostingClassifier(
+hgb_candidate = HistGradientBoostingClassifier(
     max_iter=300, learning_rate=0.06, max_depth=5,
     class_weight="balanced", random_state=42, early_stopping=True,
     validation_fraction=0.15,
 )
-hgb.fit(Xtr, ytr)
-val_proba = hgb.predict_proba(Xval)[:, 1]
-print(f"\n[HGB] val PR-AUC={average_precision_score(yval, val_proba):.3f} "
-      f"ROC-AUC={roc_auc_score(yval, val_proba):.3f}")
+hgb_candidate.fit(Xtr, ytr)
+val_proba_hgb = hgb_candidate.predict_proba(Xval)[:, 1]
+prauc_hgb = average_precision_score(yval, val_proba_hgb)
+print(f"\n[HGB] val PR-AUC={prauc_hgb:.3f} ROC-AUC={roc_auc_score(yval, val_proba_hgb):.3f}")
+
+scale_pos_weight = (ytr == 0).sum() / (ytr == 1).sum()
+xgb_candidate = XGBClassifier(
+    n_estimators=300, learning_rate=0.06, max_depth=5,
+    scale_pos_weight=scale_pos_weight, random_state=42,
+    eval_metric="aucpr", n_jobs=-1,
+)
+xgb_candidate.fit(Xtr, ytr)
+val_proba_xgb = xgb_candidate.predict_proba(Xval)[:, 1]
+prauc_xgb = average_precision_score(yval, val_proba_xgb)
+print(f"[XGB] val PR-AUC={prauc_xgb:.3f} ROC-AUC={roc_auc_score(yval, val_proba_xgb):.3f}")
+
+# Winner decided HERE, in this run, on VAL only -- not by comparing against
+# a different script execution that may have used a different library
+# version (see the sklearn/XGBoost reproducibility issue earlier in this
+# project's history: cross-run comparisons are not apples-to-apples).
+if prauc_xgb >= prauc_hgb:
+    hgb, val_proba, primary_name = xgb_candidate, val_proba_xgb, "XGB"
+else:
+    hgb, val_proba, primary_name = hgb_candidate, val_proba_hgb, "HGB"
+print(f"Primary model selected: {primary_name} (higher VAL PR-AUC)")
 
 # ---------------- Cost-sensitive threshold selection (VAL only) ------------
 # PLACEHOLDER costs -- not researched, not INR, not comparable to the
@@ -137,8 +158,10 @@ print(f"Cost if flagging nothing: ${test_cost_flag_none:,.0f}")
 print(f"Estimated cost saved: ${savings:,.0f} ({savings/test_cost_flag_none:.1%} reduction)")
 brier_raw = brier_score_loss(ytest, test_proba)
 brier_cal = brier_score_loss(ytest, test_proba_cal)
-print(f"\nBrier score (raw HGB):        {brier_raw:.5f}")
+brier_ratio = brier_raw / brier_cal if brier_cal > 0 else float("inf")
+print(f"\nBrier score (raw {primary_name}):        {brier_raw:.5f}")
 print(f"Brier score (isotonic-calib): {brier_cal:.5f}")
+print(f"Raw-to-calibrated ratio: {brier_ratio:.2f}x")
 print("NOTE: absolute Brier values are naturally tiny at a 0.13% base rate")
 print("(always predicting ~0.0013 would already score near-zero) -- the")
 print("improvement RATIO is the meaningful number, not the absolute value.")
@@ -167,10 +190,10 @@ summary = {
     "test_cost": test_cost, "test_cost_flag_none": test_cost_flag_none,
     "savings": savings, "savings_pct": savings / test_cost_flag_none,
     "cost_fn": COST_FN, "cost_fp": COST_FP,
+    "primary_model": primary_name, "val_prauc_hgb": prauc_hgb, "val_prauc_xgb": prauc_xgb,
     "cost_currency_note": "USD-scale placeholders derived from this dataset's own Amount field, NOT INR, NOT comparable to primary artifact's Rs.180/Rs.25",
     "brier_raw": brier_raw, "brier_calibrated": brier_cal,
-    "brier_note": "absolute values are naturally tiny at 0.13% base rate; the ~8x improvement ratio is the meaningful figure",
-    "calibration_plot": "omitted -- reliability diagram not informative with 75 positives at this base rate",
+    "brier_note": f"absolute values are naturally tiny at 0.13% base rate; the {brier_ratio:.2f}x raw-to-calibrated ratio is the meaningful figure, not the absolute value",
     "reason_codes": "not produced -- features are PCA-anonymized, see module docstring",
 }
 pd.Series(summary).to_json(f"{OUT}/summary_fraud.json", indent=2)
