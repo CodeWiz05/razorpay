@@ -13,3 +13,7 @@ __pycache__/
 creditcard.csv
 
 throw.py
+
+add_interaction_features.py
+add_segment_features.py
+verify_leakage_invariant.py

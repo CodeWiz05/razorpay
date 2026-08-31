@@ -1,0 +1,15 @@
+{
+  "threshold_cod": 0.30999999999999994,
+  "threshold_prepaid": 0.4749999999999999,
+  "seg_precision": 0.274784276126558,
+  "seg_recall": 0.8627332931968693,
+  "seg_f1": 0.4168121000581734,
+  "seg_mcc": 0.30486747888083365,
+  "seg_tn": 4557,
+  "seg_fp": 3782,
+  "seg_fn": 228,
+  "seg_tp": 1433,
+  "seg_cost": 135590.0,
+  "global_fn_prepaid_share": 0.9534883720930233,
+  "seg_fn_prepaid_share": 0.9692982456140351
+}
