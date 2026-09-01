@@ -1,104 +1,104 @@
 {
   "price": {
-    "importance": 0.001455852461411411,
+    "importance": 0.004938843041877694,
     "direction": "low",
-    "mean_returned": 1450.5695367588933,
-    "mean_not_returned": 1887.704743578322
+    "mean_returned": 1475.5848101064673,
+    "mean_not_returned": 1882.619466282968
   },
   "discount_pct": {
-    "importance": 0.007452085717962608,
+    "importance": 0.011078884142281985,
     "direction": "high",
-    "mean_returned": 27.51476679841897,
-    "mean_not_returned": 24.50737936154417
+    "mean_returned": 27.558191641506436,
+    "mean_not_returned": 24.502127154596966
   },
   "delivery_days": {
-    "importance": 0.009373301021797637,
+    "importance": 0.017350983319077185,
     "direction": "high",
-    "mean_returned": 4.0599209486166,
-    "mean_not_returned": 3.6706458797327395
+    "mean_returned": 4.137136500873987,
+    "mean_not_returned": 3.6565995193876644
   },
   "is_apparel": {
-    "importance": 0.027313678836232,
+    "importance": 0.029824599419522785,
     "direction": "high",
-    "mean_returned": 0.6357312252964427,
-    "mean_not_returned": 0.41469933184855234
+    "mean_returned": 0.6353090735738122,
+    "mean_not_returned": 0.4149879846916071
   },
   "customer_prior_orders": {
-    "importance": 0.0016630334235200384,
+    "importance": -0.0005623014114942038,
     "direction": "high",
-    "mean_returned": 0.9301185770750988,
-    "mean_not_returned": 0.9099034892353378
+    "mean_returned": 0.9426346734466868,
+    "mean_not_returned": 0.9075859613730086
   },
   "customer_past_return_rate": {
-    "importance": 0.03261825517786181,
+    "importance": 0.03796662511366258,
     "direction": "high",
-    "mean_returned": 0.15161328063241108,
-    "mean_not_returned": 0.12425199703043803
+    "mean_returned": 0.15152041951374548,
+    "mean_not_returned": 0.12443812857863354
   },
   "category_Beauty": {
-    "importance": 6.69385260829991e-05,
+    "importance": 0.00026016127379716036,
     "direction": "low",
-    "mean_returned": 0.11367588932806325,
-    "mean_not_returned": 0.15278396436525613
+    "mean_returned": 0.11330049261083744,
+    "mean_not_returned": 0.15281692230100571
   },
   "category_Electronics": {
-    "importance": 6.995984244929642e-05,
+    "importance": -6.011314955353675e-05,
     "direction": "low",
-    "mean_returned": 0.08221343873517786,
-    "mean_not_returned": 0.16552338530066815
+    "mean_returned": 0.08565072302558398,
+    "mean_not_returned": 0.16480256326579049
   },
   "category_Fashion": {
-    "importance": 0.00022545070859808503,
+    "importance": 4.221516845784312e-05,
     "direction": "high",
-    "mean_returned": 0.42450592885375493,
-    "mean_not_returned": 0.2757238307349666
+    "mean_returned": 0.42745908151914824,
+    "mean_not_returned": 0.2753137330524817
   },
   "category_Footwear": {
-    "importance": -1.2699813971528417e-05,
+    "importance": 0.00017200117207435972,
     "direction": "high",
-    "mean_returned": 0.21122529644268775,
-    "mean_not_returned": 0.13897550111358575
+    "mean_returned": 0.20784999205466392,
+    "mean_not_returned": 0.1396742516391254
   },
   "category_Grocery": {
-    "importance": -2.1394457875473226e-05,
+    "importance": 0.0005483783276629683,
     "direction": "low",
-    "mean_returned": 0.07509881422924901,
-    "mean_not_returned": 0.105449146250928
+    "mean_returned": 0.07389162561576355,
+    "mean_not_returned": 0.10564571157326372
   },
   "category_Home": {
-    "importance": 0.0015651009593673714,
+    "importance": 0.0004370814991186356,
     "direction": "low",
-    "mean_returned": 0.0932806324110672,
-    "mean_not_returned": 0.16154417223459538
+    "mean_returned": 0.09184808517400286,
+    "mean_not_returned": 0.161746818168333
   },
   "payment_mode_COD": {
-    "importance": 0.1267244950296261,
+    "importance": 0.12341318480757615,
     "direction": "high",
-    "mean_returned": 0.8760474308300396,
-    "mean_not_returned": 0.4368522642910171
+    "mean_returned": 0.8924201493723184,
+    "mean_not_returned": 0.43421247812027175
   },
   "payment_mode_Prepaid": {
-    "importance": -1.966822667776591e-05,
+    "importance": -4.381001571090448e-05,
     "direction": "low",
-    "mean_returned": 0.12395256916996047,
-    "mean_not_returned": 0.5631477357089829
+    "mean_returned": 0.10757985062768155,
+    "mean_not_returned": 0.5657875218797283
   },
   "pincode_tier_Tier1": {
-    "importance": -8.119724525876837e-05,
+    "importance": -0.0002495802118833712,
     "direction": "low",
-    "mean_returned": 0.38814229249011856,
-    "mean_not_returned": 0.4673199703043801
+    "mean_returned": 0.37803909105355155,
+    "mean_not_returned": 0.4691310410300531
   },
   "pincode_tier_Tier2": {
-    "importance": 0.0001457710482080876,
+    "importance": -0.00011535216960266715,
     "direction": "low",
-    "mean_returned": 0.3187351778656127,
-    "mean_not_returned": 0.35147735708982925
+    "mean_returned": 0.3170189098998888,
+    "mean_not_returned": 0.3517666953451805
   },
   "pincode_tier_Tier3": {
-    "importance": 0.006939972594850874,
+    "importance": 0.008237612170535868,
     "direction": "high",
-    "mean_returned": 0.29312252964426877,
-    "mean_not_returned": 0.18120267260579065
+    "mean_returned": 0.30494199904655966,
+    "mean_not_returned": 0.17910226362476636
   }
 }

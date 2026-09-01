@@ -1,0 +1,31 @@
+{
+  "exponents_tried": [
+    0.3,
+    0.5,
+    0.7
+  ],
+  "selected_exponent": 0.3,
+  "selection_criterion": "lowest VAL cost",
+  "val_results": {
+    "0.3": {
+      "val_prauc": 0.34570461538549224,
+      "val_cost": 136260.0,
+      "threshold": 0.135
+    },
+    "0.5": {
+      "val_prauc": 0.33310050687591547,
+      "val_cost": 140085.0,
+      "threshold": 0.22999999999999998
+    },
+    "0.7": {
+      "val_prauc": 0.3085062069385204,
+      "val_cost": 147875.0,
+      "threshold": 0.3
+    }
+  },
+  "test_prauc": 0.34896515539247075,
+  "test_mcc": 0.28186358620272073,
+  "test_cost": 138820.0,
+  "fn_prepaid_count": 122,
+  "fn_prepaid_share": 0.9104477611940298
+}

@@ -107,33 +107,46 @@ def generate():
 
         # ---- Generate ground-truth return probability (the "true" data-
     #      generating process; the model never sees this directly) ----
+        # ---- Generate ground-truth return probability (the "true" data-
+    #      generating process; the model never sees this directly) ----
     is_cod = (df["payment_mode"] == "COD").astype(int)
     tier3_flag = (df["pincode_tier"] == "Tier3").astype(int)
 
-    # CALIBRATION UPDATE (see README/data-notes for citations):
-    #   Original coefficients (COD=1.15, intercept=-3.0) implied a COD:Prepaid
-    #   return-rate ratio of ~3x. Cross-checking against named, dated industry
-    #   reports on real India COD/RTO figures shows the real gap is larger:
-    #     - Shipway ShipNotes FY25: COD ~26% RTO vs prepaid <2%
-    #     - Unicommerce India D2C Report 2026 (410M shipments, 6,000+ brands):
-    #       COD RTO ranged 21-58% seasonally vs prepaid <15%
-    #     - bepragma, 142 D2C brands tracked 2024: COD RTO 28-35% vs prepaid 4-8%
-    #   These don't agree with each other exactly (industry figures for this
-    #   metric are notably inconsistent/unsourced across vendors -- itself
-    #   worth stating plainly), but they consistently show a much wider
-    #   COD:Prepaid gap than 3x -- more like 6-13x. Recalibrated below to
-    #   land at ~6.4x, conservative relative to the cited range, while holding
-    #   the overall base return rate roughly constant (~16%, unchanged from
-    #   before) so this is a redistribution of WHERE return risk concentrates,
-    #   not a change to how return-prone the dataset is overall.
+    # DELIVERY_DAYS UPDATE (see README/data-notes for citations):
+    #   Split into a small GENERIC component (applies to all orders,
+    #   unverified for prepaid specifically -- no non-COD evidence found,
+    #   but zero effect isn't verified either, so a small assumed base is
+    #   kept rather than dropped) plus a much larger COD-SPECIFIC component,
+    #   calibrated against real India data: Shipway ShipNotes FY25 reports
+    #   COD RTO rates of 22% (1-2 day delivery), 27% (3-5 days), 35% (5+
+    #   days) -- a real, India-specific, quantified target, replacing the
+    #   earlier flat 0.06/day guess (which was ~5.5x an unrelated Western
+    #   academic estimate of 0.011/day and had no COD/prepaid distinction).
+    delay = (df["delivery_days"] - 3).clip(lower=0)
+    delivery_term = 0.004 * delay + is_cod * 0.11 * delay
+
+    # PRICE UPDATE (see README/data-notes for citations):
+    #   Replaced the old monotonic "cheaper = more return-prone" assumption
+    #   entirely -- real data (Shipway ShipNotes FY25, corroborated by 3
+    #   independent sources) shows a NON-monotonic hump: RTO peaks at
+    #   25%/28%/24% for <500 / 500-1000 / >1000 price bands, i.e. mid-price
+    #   "impulse zone" orders are riskiest, not the cheapest ones. Modeled
+    #   as a smooth triangular hump peaking at Rs.750 (not a literal 3-bucket
+    #   step function, since the report's buckets are a presentation choice,
+    #   not evidence the true relationship has hard edges), split the same
+    #   way as delivery: small generic component (all orders) + larger
+    #   COD-specific component (calibrated to the Shipway bands above).
+    hump = (1 - (df["price"] - 750).abs() / 450).clip(lower=0)
+    price_term = 0.015 * hump + is_cod * 0.22 * hump
+
     logit = (
-        -3.6
+        -3.781
         + 1.90 * is_cod
         + 0.55 * df["is_apparel"]
         + 0.012 * df["discount_pct"]
         + 0.25 * tier3_flag
-        + 0.06 * (df["delivery_days"] - 3).clip(lower=0)
-        - 0.00004 * df["price"]
+        + delivery_term
+        + price_term
     )
     base_prob = 1 / (1 + np.exp(-logit))
 

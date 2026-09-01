@@ -1,6 +1,6 @@
 venv/
 data_orders.csv
-
+data_orders_350k.csv
 # python
 __pycache__/
 *.pyc
