@@ -1,5 +1,4 @@
 # ReturnGuard - Return/RTO Risk Scorer for Indian E-Commerce
-*(placeholder title - replace with final project name)*
 
 **Razorpay AI Buildathon - AI Risk Manager track**
 
