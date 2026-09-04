@@ -12,8 +12,8 @@ val_y = np.load(f"{OUT}/val_y.npy")
 test_proba = np.load(f"{OUT}/test_proba.npy")
 test_y = np.load(f"{OUT}/test_y.npy")
 summary = json.load(open(f"{OUT}/summary.json"))
-
 calibrator = joblib.load(f"{OUT}/calibrator.joblib")
+val_proba_calibrated = calibrator.predict(val_proba)   # NEW
 test_proba_calibrated = calibrator.predict(test_proba)
 
 COST_FN, COST_FP = summary["cost_fn"], summary["cost_fp"]
@@ -37,7 +37,7 @@ axes[0].grid(alpha=0.3)
 thresholds = np.linspace(0.05, 0.95, 181)
 costs = []
 for t in thresholds:
-    pred = (val_proba >= t).astype(int)
+    pred = (val_proba_calibrated >= t).astype(int)
     fp = ((pred == 1) & (val_y == 0)).sum()
     fn = ((pred == 0) & (val_y == 1)).sum()
     costs.append(fp * COST_FP + fn * COST_FN)

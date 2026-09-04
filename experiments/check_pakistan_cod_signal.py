@@ -68,7 +68,7 @@ df["status"] = df["status"].astype(str).str.strip().str.lower()
 ambiguous_status = {"cod", "payment_review", "pending", "processing", "holded", "pending_paypal", "nan"}
 df_clean = df[~df["status"].isin(ambiguous_status)].copy()
 
-RETURN_EQUIVALENT = {"canceled", "order_refunded", "refund"}
+RETURN_EQUIVALENT = {"order_refunded", "refund"}
 df_clean["return_equivalent"] = df_clean["status"].isin(RETURN_EQUIVALENT).astype(int)
 
 df_clean["is_cod"] = df_clean["payment_method"].isin({"cod", "cashatdoorstep"}).astype(int)

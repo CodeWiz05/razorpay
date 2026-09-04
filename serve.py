@@ -35,7 +35,7 @@ credit-score "adverse action" codes -- informative without exposing exact
 model internals.
 """
 import json
-from typing import Literal
+from typing import Literal, Optional
 
 import joblib
 import pandas as pd
@@ -98,6 +98,9 @@ LABELS = {
     "category_Beauty": "Beauty category",
     "category_Home": "Home category",
     "category_Grocery": "Grocery category",
+    "is_bracketed": "Multi-size/color bracket order",
+    "size_variant_count": "Multiple size/color variants ordered together",
+    "is_festive": "Order placed during a festive sale period",
 }
 
 app = FastAPI(title="Return-Risk Scorer")
@@ -112,7 +115,22 @@ class Order(BaseModel):
     delivery_days: float = Field(gt=0)
     customer_prior_orders: int = Field(ge=0)
     customer_past_return_rate: float = Field(ge=0, le=1)
+    is_bracketed: bool = Field(default=False)
+    size_variant_count: int = Field(default=1, ge=1)
+    order_date: Optional[str] = Field(default=None, description="ISO date; omit to assume non-festive")
 
+# Duplicated from generate_data.py, same reasoning as APPAREL_CATEGORIES above
+FESTIVE_WINDOWS = [
+    ("2025-08-10", "2025-08-20"), ("2025-10-01", "2025-10-25"),
+    ("2025-12-20", "2025-12-31"), ("2026-01-20", "2026-01-30"),
+    ("2026-07-01", "2026-07-15"), ("2026-08-10", "2026-08-20"),
+]
+
+def compute_is_festive(order_date_str):
+    if not order_date_str:
+        return 0
+    d = pd.Timestamp(order_date_str)
+    return int(any(pd.Timestamp(s) <= d <= pd.Timestamp(e) for s, e in FESTIVE_WINDOWS))
 
 def build_feature_row(order: Order) -> pd.DataFrame:
     """Builds a single-row feature vector matching training-time encoding.
@@ -137,6 +155,9 @@ def build_feature_row(order: Order) -> pd.DataFrame:
         f"category_{order.category}": 1,
         f"payment_mode_{order.payment_mode}": 1,
         f"pincode_tier_{order.pincode_tier}": 1,
+        "is_bracketed": int(order.is_bracketed),
+        "size_variant_count": order.size_variant_count,
+        "is_festive": compute_is_festive(order.order_date),
     }
     df = pd.DataFrame([row])
     return df.reindex(columns=feature_cols, fill_value=0)
@@ -176,15 +197,12 @@ def score_order(order: Order, reviewer_view: bool = Query(False)):
     raw_score = float(model.predict_proba(feature_row)[:, 1][0])
     calibrated_score = float(calibrator.predict([raw_score])[0])
 
-    # Decision uses the RAW score against THRESHOLD exactly as validated in
-    # train.py -- the frozen threshold was chosen against raw, uncalibrated
-    # probabilities. Isotonic calibration is a monotonic transform, so
-    # re-deriving a new threshold from calibrated_score would be a silent,
-    # untested change to a result that's already frozen and reported.
-    # calibrated_score is returned (reviewer_view only) as a more honest
-    # probability estimate for downstream cost calculations -- it doesn't
-    # gate the decision itself.
-    flagged = raw_score >= THRESHOLD
+    # Decision uses the CALIBRATED score against THRESHOLD -- train.py now
+    # calibrates BEFORE threshold selection (fix applied [date]; see README
+    # methodology section), so best_threshold in summary.json is on the
+    # calibrated scale. Comparing raw_score against it would silently
+    # reintroduce the exact ordering bug that fix closed.
+    flagged = calibrated_score >= THRESHOLD
     decision = "review" if flagged else "approve"
     reason_codes = get_reason_codes(feature_row) if (flagged or reviewer_view) else []
 

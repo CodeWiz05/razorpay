@@ -40,14 +40,21 @@ PRESETS = {
         "category": "Fashion", "price": 899.0, "discount_pct": 60.0,
         "payment_mode": "COD", "pincode_tier": "Tier3", "delivery_days": 6.0,
         "customer_prior_orders": 2, "customer_past_return_rate": 0.4,
+        "is_bracketed": False, "size_variant_count": 1,
     },
     "Low-risk example (Prepaid, electronics, no discount, Tier1)": {
         "category": "Electronics", "price": 4500.0, "discount_pct": 5.0,
         "payment_mode": "Prepaid", "pincode_tier": "Tier1", "delivery_days": 2.0,
         "customer_prior_orders": 5, "customer_past_return_rate": 0.0,
+        "is_bracketed": False, "size_variant_count": 1,
+    },
+    "Bracketed example (Prepaid, apparel, 3 sizes ordered)": {
+        "category": "Fashion", "price": 1200.0, "discount_pct": 15.0,
+        "payment_mode": "Prepaid", "pincode_tier": "Tier1", "delivery_days": 3.0,
+        "customer_prior_orders": 4, "customer_past_return_rate": 0.1,
+        "is_bracketed": True, "size_variant_count": 3,
     },
 }
-
 preset_choice = st.selectbox("Load an example order", list(PRESETS.keys()))
 preset = PRESETS[preset_choice]
 
@@ -82,6 +89,11 @@ with col1:
         index=PAYMENT_MODES.index(preset["payment_mode"]) if preset else 0,
         key=f"payment_{preset_choice}",
     )
+    is_bracketed = st.checkbox(
+        "Bracketed (multiple sizes/colors ordered together)",
+        value=preset.get("is_bracketed", False) if preset else False,
+        key=f"bracket_{preset_choice}",
+    )
 
 with col2:
     pincode_tier = st.selectbox(
@@ -104,7 +116,11 @@ with col2:
         preset["customer_past_return_rate"] if preset else 0.12,
         key=f"past_rate_{preset_choice}",
     )
-
+    size_variant_count = st.number_input(
+        "Size/color variants in this order", min_value=1, step=1,
+        value=preset.get("size_variant_count", 1) if preset else 1,
+        key=f"variants_{preset_choice}",
+    )
 order_payload = {
     "category": category,
     "price": price,
@@ -114,6 +130,8 @@ order_payload = {
     "delivery_days": delivery_days,
     "customer_prior_orders": customer_prior_orders,
     "customer_past_return_rate": customer_past_return_rate,
+    "is_bracketed" : is_bracketed,
+    "size_variant_count" : size_variant_count,
 }
 
 if st.button("Score this order", type="primary"):
