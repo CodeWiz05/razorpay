@@ -11,3 +11,4 @@ __pycache__/
 
 # real third-party data (not ours to redistribute)
 creditcard.csv
+experiments/segment_calibration_test_results.csv

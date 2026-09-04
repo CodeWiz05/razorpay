@@ -17,8 +17,10 @@ single shared decision boundary may be structurally the wrong fit for
 two different generative processes, not just a tuning problem.
 
 DISCIPLINE: reloads data and the FROZEN production model independently
-(never touches train.py's live state). VAL used for threshold selection
-per segment. TEST touched exactly once per model, at the end.
+(never touches train.py's live state). VAL used for calibration fit and
+threshold selection per segment (calibrate BEFORE threshold search,
+matching train.py's fixed ordering -- see README Section 2). TEST touched
+exactly once per model, at the end.
 """
 import numpy as np
 import pandas as pd
@@ -27,6 +29,7 @@ import json
 import sys
 from pathlib import Path
 from sklearn.ensemble import HistGradientBoostingClassifier
+from sklearn.isotonic import IsotonicRegression
 from sklearn.metrics import (
     average_precision_score, roc_auc_score, precision_score, recall_score,
     f1_score, confusion_matrix, matthews_corrcoef,
@@ -35,7 +38,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 from features import load_features, TARGET
 
-OUT = "C:/Numair/Coding/Razorpay/outputs"
+OUT = str(PROJECT_ROOT / "outputs")
 
 # ---------------- Reload data split (identical to train.py) ----------------
 df, feature_cols = load_features()
@@ -49,6 +52,7 @@ val = df[(df["order_date"] >= t1) & (df["order_date"] < t2)]
 test = df[df["order_date"] >= t2]
 
 COST_FN, COST_FP = 180.0, 25.0
+CLOSED_FORM_THRESHOLD = COST_FP / (COST_FP + COST_FN)  # matches train.py's fixed ordering
 
 def cost_optimal_threshold(proba, y_true, cost_fn=COST_FN, cost_fp=COST_FP):
     ths = np.linspace(0.05, 0.95, 181)
@@ -99,26 +103,52 @@ hgb_ppd = fit_hgb(train_ppd[feature_cols], train_ppd[TARGET])
 val_proba_cod = hgb_cod.predict_proba(val_cod[feature_cols])[:, 1]
 val_proba_ppd = hgb_ppd.predict_proba(val_ppd[feature_cols])[:, 1]
 
-print(f"\n[COD model]     val PR-AUC={average_precision_score(val_cod[TARGET], val_proba_cod):.3f} "
-      f"ROC-AUC={roc_auc_score(val_cod[TARGET], val_proba_cod):.3f}")
-print(f"[Prepaid model] val PR-AUC={average_precision_score(val_ppd[TARGET], val_proba_ppd):.3f} "
-      f"ROC-AUC={roc_auc_score(val_ppd[TARGET], val_proba_ppd):.3f}")
+cod_base_rate = val_cod[TARGET].mean()
+ppd_base_rate = val_ppd[TARGET].mean()
+cod_prauc = average_precision_score(val_cod[TARGET], val_proba_cod)
+ppd_prauc = average_precision_score(val_ppd[TARGET], val_proba_ppd)
+
+print(f"\n[COD model]     val PR-AUC={cod_prauc:.3f} (base_rate={cod_base_rate:.3f}, "
+      f"lift={cod_prauc/cod_base_rate:.2f}x)  ROC-AUC={roc_auc_score(val_cod[TARGET], val_proba_cod):.3f}")
+print(f"[Prepaid model] val PR-AUC={ppd_prauc:.3f} (base_rate={ppd_base_rate:.3f}, "
+      f"lift={ppd_prauc/ppd_base_rate:.2f}x)  ROC-AUC={roc_auc_score(val_ppd[TARGET], val_proba_ppd):.3f}")
+print("PR-AUC alone isn't comparable across segments with different base rates -- lift is.")
+print("If Prepaid's lift/ROC-AUC are close to or above COD's, the model IS separating")
+print("risky from safe Prepaid orders -- the recall gap has to be downstream of that:")
+print("calibration + threshold, not the model's ability to rank.")
+
+# ---------------- Calibrate BEFORE threshold selection ---------------------
+# Same ordering fix as train.py -- each model gets its OWN calibrator, fit
+# on its own segment's val scores, before any threshold is searched.
+cal_cod = IsotonicRegression(out_of_bounds="clip")
+cal_cod.fit(val_proba_cod, val_cod[TARGET].values)
+val_proba_cod_cal = cal_cod.predict(val_proba_cod)
+
+cal_ppd = IsotonicRegression(out_of_bounds="clip")
+cal_ppd.fit(val_proba_ppd, val_ppd[TARGET].values)
+val_proba_ppd_cal = cal_ppd.predict(val_proba_ppd)
 
 # ---------------- Independent cost-optimal threshold per segment -----------
-t_cod, val_cost_cod = cost_optimal_threshold(val_proba_cod, val_cod[TARGET].values)
-t_ppd, val_cost_ppd = cost_optimal_threshold(val_proba_ppd, val_ppd[TARGET].values)
-print(f"\nThresholds (independent, no macro/blended tension needed): COD={t_cod:.3f}  Prepaid={t_ppd:.3f}")
+t_cod, val_cost_cod = cost_optimal_threshold(val_proba_cod_cal, val_cod[TARGET].values)
+t_ppd, val_cost_ppd = cost_optimal_threshold(val_proba_ppd_cal, val_ppd[TARGET].values)
+print(f"\nThresholds (independent, calibrated scale): COD={t_cod:.3f}  Prepaid={t_ppd:.3f}")
+print(f"Closed-form reference (same for both, cost ratio doesn't change by architecture): "
+      f"{CLOSED_FORM_THRESHOLD:.4f}")
+print(f"  COD diff from closed-form: {abs(t_cod - CLOSED_FORM_THRESHOLD):.4f}   "
+      f"Prepaid diff from closed-form: {abs(t_ppd - CLOSED_FORM_THRESHOLD):.4f}")
 
 # ---------------- FROZEN TEST evaluation, once per model -------------------
 test_proba_cod = hgb_cod.predict_proba(test_cod[feature_cols])[:, 1]
 test_proba_ppd = hgb_ppd.predict_proba(test_ppd[feature_cols])[:, 1]
-test_pred_cod = (test_proba_cod >= t_cod).astype(int)
-test_pred_ppd = (test_proba_ppd >= t_ppd).astype(int)
+test_proba_cod_cal = cal_cod.predict(test_proba_cod)
+test_proba_ppd_cal = cal_ppd.predict(test_proba_ppd)
+test_pred_cod = (test_proba_cod_cal >= t_cod).astype(int)
+test_pred_ppd = (test_proba_ppd_cal >= t_ppd).astype(int)
 
 # ---------------- Combine into overall metrics (matching production's shape) -
 y_combined = pd.concat([test_cod[TARGET], test_ppd[TARGET]]).values
 pred_combined = np.concatenate([test_pred_cod, test_pred_ppd])
-proba_combined = np.concatenate([test_proba_cod, test_proba_ppd])
+proba_combined = np.concatenate([test_proba_cod_cal, test_proba_ppd_cal])
 
 tn, fp, fn, tp = confusion_matrix(y_combined, pred_combined).ravel()
 cost = fp * COST_FP + fn * COST_FN
@@ -142,12 +172,17 @@ print(f"FN prepaid count={int(fn_prepaid_count)} ({fn_prepaid_share:.1%} of all 
 
 # ---------------- Load the FROZEN production (shared) model for comparison -
 model_shared = joblib.load(f"{OUT}/model.joblib")
+calibrator_shared = joblib.load(f"{OUT}/calibrator.joblib")
 summary_shared = json.load(open(f"{OUT}/summary.json"))
 t_shared = summary_shared["best_threshold"]
 
 Xtest_full = test[feature_cols]
 ytest_full = test[TARGET]
-proba_shared = model_shared.predict_proba(Xtest_full)[:, 1]
+proba_shared_raw = model_shared.predict_proba(Xtest_full)[:, 1]
+# best_threshold is on the CALIBRATED scale (train.py calibrates before
+# thresholding) -- comparing raw scores against it would reintroduce the
+# exact ordering bug that fix closed. Calibrate first, same as serve.py.
+proba_shared = calibrator_shared.predict(proba_shared_raw)
 pred_shared = (proba_shared >= t_shared).astype(int)
 
 tn_s, fp_s, fn_s, tp_s = confusion_matrix(ytest_full, pred_shared).ravel()

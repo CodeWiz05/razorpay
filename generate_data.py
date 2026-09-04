@@ -40,7 +40,9 @@ BRACKET_APPAREL_COEF = 0.3
 BRACKET_PREPAID_COEF = 0.3
 BRACKET_INTERACTION_COEF = 4.43
 BRACKET_RETURN_BOOST = 1.1
-COD_COEF = 2.40
+COD_COEF = 2.75
+N_LISTINGS_PER_CATEGORY = 80  # documented assumption, not cited -- see README Section 3.10
+LISTING_QUALITY_SIGMA = 0.8   # documented assumption, not cited -- see README Section 3.10
 
 
 def generate():
@@ -52,6 +54,16 @@ def generate():
 
     categories = RNG.choice(CATEGORIES, size=N_ORDERS, p=CATEGORY_PROBS)
     is_apparel = np.isin(categories, list(APPAREL_CATS)).astype(int)
+        # ---- LISTING-LEVEL IDENTITY: SKU + hidden quality/fit effect ----
+    # Category alone can't capture within-category return-rate variance
+    # (sizing, material, photo accuracy). Modeled as a hidden per-listing
+    # logit offset the model NEVER sees directly -- only the expanding
+    # historical return rate computed below (same architecture as
+    # customer_past_return_rate, but with no feedback loop into base_prob:
+    # this is a pure proxy of an already-latent cause, not a second causal
+    # channel). See README Section 3.10 [listing-level-heterogeneity].
+    listing_num = RNG.integers(0, N_LISTINGS_PER_CATEGORY, size=N_ORDERS)
+    product_id = pd.Series(categories).astype(str) + "_" + pd.Series(listing_num).astype(str)
 
     base_price = np.array([CATEGORY_BASE_PRICE[c] for c in categories])
     price = np.round(base_price * RNG.lognormal(mean=0, sigma=0.5, size=N_ORDERS), 2)
@@ -82,6 +94,7 @@ def generate():
         "order_date": order_dates.values,
         "category": categories,
         "is_apparel": is_apparel,
+        "product_id": product_id.values,
         "price": price,
         "discount_pct": discount_pct,
         "payment_mode": payment_mode,
@@ -114,6 +127,12 @@ def generate():
     # Interaction term dominates by design -- apparel-alone and prepaid-alone
     # main effects are deliberately small so COD/non-apparel rarely trigger this.
     is_apparel_arr = df["is_apparel"].values
+    unique_listings = df["product_id"].unique()
+    listing_quality_effect = pd.Series(
+        RNG.normal(0, LISTING_QUALITY_SIGMA, size=len(unique_listings)),
+        index=unique_listings,
+    )
+    df["_listing_quality_effect"] = df["product_id"].map(listing_quality_effect)
     bracket_logit = (
         BRACKET_INTERCEPT
         + BRACKET_APPAREL_COEF * is_apparel_arr
@@ -146,7 +165,7 @@ def generate():
     price_term = 0.015 * hump + is_cod * 0.22 * hump
 
     logit = (
-        -4.50
+        -4.95
         + COD_COEF * is_cod
         + category_term
         - 0.001 * df["discount_pct"]
@@ -155,6 +174,7 @@ def generate():
         + price_term
         + 0.30 * df["is_festive"]
         + BRACKET_RETURN_BOOST * is_bracketed
+        + df["_listing_quality_effect"]
     )
     base_prob = 1 / (1 + np.exp(-logit))
 
@@ -166,26 +186,44 @@ def generate():
     past_return_rate = np.zeros(N_ORDERS)
     cust_order_seq = np.zeros(N_ORDERS, dtype=int)
 
+    prod_return_counts = {}
+    prod_order_counts = {}
+    product_past_return_rate = np.zeros(N_ORDERS)
+
     for i in range(N_ORDERS):
         cid = df.at[i, "customer_id"]
+        pid = df.at[i, "product_id"]
+
         prior_orders = cust_order_counts.get(cid, 0)
         prior_returns = cust_return_counts.get(cid, 0)
-        prr = (prior_returns / prior_orders) if prior_orders >= 2 else 0.12  # cold-start prior
+        prr = (prior_returns / prior_orders) if prior_orders >= 2 else 0.12
         past_return_rate[i] = prr
         cust_order_seq[i] = prior_orders
 
-        # serial-returner effect layered on top of base_prob
+        # Product history: cold-start prior = overall target rate (~0.16),
+        # min 3 prior orders before trusting the listing's own rate --
+        # stricter than the customer threshold (2) since a single early
+        # return on a low-volume SKU is noisier signal than on a customer.
+        prod_prior_orders = prod_order_counts.get(pid, 0)
+        prod_prior_returns = prod_return_counts.get(pid, 0)
+        product_past_return_rate[i] = (
+            prod_prior_returns / prod_prior_orders if prod_prior_orders >= 3 else 0.16
+        )
+
         p = np.clip(base_prob[i] + 0.25 * (prr - 0.15), 0.01, 0.95)
         r = int(RNG.random() < p)
         returned[i] = r
 
         cust_order_counts[cid] = prior_orders + 1
         cust_return_counts[cid] = prior_returns + r
+        prod_order_counts[pid] = prod_prior_orders + 1
+        prod_return_counts[pid] = prod_prior_returns + r
 
     df["customer_prior_orders"] = cust_order_seq
     df["customer_past_return_rate"] = past_return_rate.round(3)
+    df["product_past_return_rate"] = product_past_return_rate.round(3)
     df["returned"] = returned
-
+    df = df.drop(columns=["_listing_quality_effect"])
     return df
 
 

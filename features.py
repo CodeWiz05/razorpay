@@ -16,7 +16,7 @@ CATEGORICAL = ["category", "payment_mode", "pincode_tier"]
 NUMERIC = [
     "price", "discount_pct", "delivery_days", "is_apparel",
     "customer_prior_orders", "customer_past_return_rate", "is_festive",
-    "is_bracketed", "size_variant_count"
+    "is_bracketed", "size_variant_count", "product_past_return_rate" 
 ]
 TARGET = "returned"
 DATA_PATH = str(Path(__file__).resolve().parent / "data_orders.csv")
