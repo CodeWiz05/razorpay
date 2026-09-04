@@ -15,14 +15,16 @@ LEAKAGE NOTES (read before changing anything):
     random. A random split leaks future customer behavior into training.
 """
 import pandas as pd
+from pathlib import Path
 
 CATEGORICAL = ["category", "payment_mode", "pincode_tier"]
 NUMERIC = [
     "price", "discount_pct", "delivery_days", "is_apparel",
-    "customer_prior_orders", "customer_past_return_rate",
+    "customer_prior_orders", "customer_past_return_rate", "is_festive",
+    "is_bracketed", "size_variant_count"
 ]
 TARGET = "returned"
-DATA_PATH = "C:/Numair/Coding/Razorpay/data_orders.csv"
+DATA_PATH = str(Path(__file__).resolve().parent / "data_orders.csv")
 
 
 def load_features(path=DATA_PATH):

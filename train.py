@@ -25,7 +25,9 @@ import json
 
 from features import load_features, TARGET
 
-OUT = "C:/Numair/Coding/Razorpay/outputs"
+from pathlib import Path
+OUT = str(Path(__file__).resolve().parent / "outputs")
+Path(OUT).mkdir(exist_ok=True)
 
 df, feature_cols = load_features()
 df = df.sort_values("order_date").reset_index(drop=True)
@@ -53,9 +55,18 @@ baseline_recall = recall_score(yval, baseline_flag_val)
 print(f"\n[Rule baseline: flag all COD+apparel] val precision={baseline_precision:.3f} recall={baseline_recall:.3f}")
 
 # ---------------- Model 1: Logistic Regression (interpretable) -------------
+# Drops one reference dummy per categorical group (COD, Grocery, Tier1 --
+# chosen to match the baselines already used elsewhere: Grocery is the
+# generative model's own 1.0x category baseline) so coefficients are
+# uniquely interpretable. Scoped to LogReg only -- HGB/XGBoost and every
+# other reference to payment_mode_COD/etc. elsewhere in this file are
+# untouched.
+logreg_ref_cols = {"payment_mode_COD", "category_Grocery", "pincode_tier_Tier1"}
+logreg_feature_cols = [c for c in feature_cols if c not in logreg_ref_cols]
+
 logreg = LogisticRegression(max_iter=1000, class_weight="balanced")
-logreg.fit(Xtr, ytr)
-val_proba_lr = logreg.predict_proba(Xval)[:, 1]
+logreg.fit(Xtr[logreg_feature_cols], ytr)
+val_proba_lr = logreg.predict_proba(Xval[logreg_feature_cols])[:, 1]
 print(f"[LogReg] val PR-AUC={average_precision_score(yval, val_proba_lr):.3f} "
       f"ROC-AUC={roc_auc_score(yval, val_proba_lr):.3f}")
 
@@ -126,6 +137,27 @@ print(f"[XGB]    val PR-AUC={average_precision_score(yval, val_proba_xgb):.3f} "
 COST_FN = 180.0
 COST_FP = 25.0
 
+# ---------------- Calibrate BEFORE threshold selection (fix: was reversed) -
+# Previously the threshold was grid-searched on RAW val_proba_hgb, and
+# calibration was fit afterward -- so the operating threshold was chosen on
+# a probability scale that got rescaled before TEST was ever touched.
+# Fit calibrator on the production model's raw val scores, then do
+# everything downstream (threshold search, TEST decision) on CALIBRATED
+# probabilities. Isotonic regression is monotonic, so this does NOT change
+# PR-AUC/ROC-AUC (rank-invariant) -- it only changes which cut point maps
+# to which precision/recall/cost, which is exactly the thing that was wrong.
+calibrator = IsotonicRegression(out_of_bounds="clip")
+calibrator.fit(val_proba_hgb, yval)
+val_proba_hgb_calibrated = calibrator.predict(val_proba_hgb)
+
+# Closed-form cost-optimal threshold, for a well-calibrated probability:
+# flag iff p * COST_FN > (1-p) * COST_FP  =>  p > COST_FP/(COST_FP+COST_FN)
+# Zero sampling variance -- doesn't touch val at all. Compare this against
+# whatever the grid search below lands on; if they diverge a lot, that's a
+# signal calibration isn't as clean as it looks in aggregate (see note below).
+closed_form_threshold = COST_FP / (COST_FP + COST_FN)
+print(f"\n[Closed-form cost-optimal threshold] p = {closed_form_threshold:.4f}")
+
 # SELECTION CRITERION: MACRO-averaged cost-per-order across payment_mode
 # segments, NOT blended total cost.
 #
@@ -150,7 +182,7 @@ thresholds = np.linspace(0.05, 0.95, 181)
 blended_costs = []
 macro_costs = []
 for t in thresholds:
-    pred = (val_proba_hgb >= t).astype(int)
+    pred = (val_proba_hgb_calibrated >= t).astype(int)
 
     # Blended (kept + reported for transparency/comparison, NOT used to select)
     fp_all = ((pred == 1) & (yval.values == 0)).sum()
@@ -174,6 +206,9 @@ macro_costs = np.array(macro_costs)
 # PRIMARY selection: lowest macro-cost
 best_idx = macro_costs.argmin()
 best_threshold = thresholds[best_idx]
+print(f"  [Compare] macro-searched threshold (calibrated scale): {best_threshold:.4f}  "
+      f"vs closed-form: {closed_form_threshold:.4f}  "
+      f"(diff: {abs(best_threshold - closed_form_threshold):.4f})")
 
 # What blended-cost selection WOULD have chosen, for direct comparison
 blended_best_idx = blended_costs.argmin()
@@ -188,7 +223,8 @@ print(f"  Val blended cost at MACRO-selected threshold: ₹{blended_costs[best_i
       f"vs flag-none ₹{cost_flag_none:,.0f}  vs flag-all ₹{cost_flag_all:,.0f}")
 # ---------------- FROZEN, single-shot evaluation on TEST -------------------
 test_proba = hgb.predict_proba(Xtest)[:, 1]
-test_pred = (test_proba >= best_threshold).astype(int)
+test_proba_calibrated = calibrator.predict(test_proba)
+test_pred = (test_proba_calibrated >= best_threshold).astype(int)
 
 test_precision = precision_score(ytest, test_pred)
 test_recall = recall_score(ytest, test_pred)
@@ -235,9 +271,6 @@ print(f"MCC:       {test_mcc:.3f}")
 # Recreates the calibration step your project notes describe but that has
 # no corresponding file in this codebase -- see chat for why this is being
 # added now rather than assumed already done.
-calibrator = IsotonicRegression(out_of_bounds="clip")
-calibrator.fit(val_proba_hgb, yval)
-test_proba_calibrated = calibrator.predict(test_proba)
 brier_raw = brier_score_loss(ytest, test_proba)
 brier_cal = brier_score_loss(ytest, test_proba_calibrated)
 print(f"\nBrier score (raw):        {brier_raw:.4f}")
@@ -270,7 +303,7 @@ with open(f"{OUT}/reason_code_reference.json", "w") as f:
     json.dump(reason_reference, f, indent=2)
 with open(f"{OUT}/feature_columns.json", "w") as f:
     json.dump(feature_cols, f, indent=2)
-joblib.dump(calibrator, "outputs/calibrator.joblib")
+joblib.dump(calibrator, f"{OUT}/calibrator.joblib")
 print("Saved calibrator.joblib, reason_code_reference.json, feature_columns.json to outputs/")
 
 # ---------------- Save everything for the report / artifact ----------------
@@ -342,6 +375,24 @@ fn_prepaid_share_final = fn_prepaid_count_final / fn_mask_final.sum()
 print(f"\nProduction model FN breakdown: {int(fn_mask_final.sum())} total FN, "
       f"{int(fn_prepaid_count_final)} prepaid ({fn_prepaid_share_final:.1%})")
 
+# Recall by segment -- the number that actually answers "did prepaid detection
+# improve," since FN share alone can move just from overall threshold shifts
+# (see change log: FN share dropped 77.9%->58.4% in one run while prepaid FN
+# COUNT rose 109->132 -- share was misleading there, recall is the real check).
+tp_mask_final = (test_pred == 1) & (ytest.values == 1)
+cod_mask_final = ~test_ppd_mask_final
+
+ppd_positives = (test_ppd_mask_final & (ytest.values == 1)).sum()
+cod_positives = (cod_mask_final & (ytest.values == 1)).sum()
+ppd_tp = (test_ppd_mask_final & tp_mask_final).sum()
+cod_tp = (cod_mask_final & tp_mask_final).sum()
+
+ppd_recall = ppd_tp / ppd_positives if ppd_positives > 0 else float("nan")
+cod_recall = cod_tp / cod_positives if cod_positives > 0 else float("nan")
+print(f"Production model recall by segment: "
+      f"Prepaid={ppd_recall:.3f} ({ppd_tp}/{ppd_positives})  "
+      f"COD={cod_recall:.3f} ({cod_tp}/{cod_positives})")
+
 # Same damped sample-weight, different architecture -- tests whether the
 # result is a property of the sparse prepaid-positive signal itself
 # (architecture-agnostic), or specifically a limitation of HGB's response
@@ -371,3 +422,46 @@ print(f"\n[XGB damped, frozen TEST] total FN={int(fn_mask_xgbd.sum())}  "
       f"prepaid FN={int(fn_prepaid_xgbd)} ({fn_prepaid_xgbd/fn_mask_xgbd.sum():.1%})  "
       f"cost=₹{cost_x:,.0f}  PR-AUC={average_precision_score(ytest, test_proba_xgb_damped):.3f}  "
       f"MCC={matthews_corrcoef(ytest, test_pred_xgb_damped):.3f}")
+
+tp_mask_xgbd = (test_pred_xgb_damped == 1) & (ytest.values == 1)
+ppd_tp_xgbd = (test_ppd_mask_final & tp_mask_xgbd).sum()
+cod_tp_xgbd = (cod_mask_final & tp_mask_xgbd).sum()
+ppd_recall_xgbd = ppd_tp_xgbd / ppd_positives if ppd_positives > 0 else float("nan")
+cod_recall_xgbd = cod_tp_xgbd / cod_positives if cod_positives > 0 else float("nan")
+print(f"[XGB damped] recall by segment: "
+      f"Prepaid={ppd_recall_xgbd:.3f} ({ppd_tp_xgbd}/{ppd_positives})  "
+      f"COD={cod_recall_xgbd:.3f} ({cod_tp_xgbd}/{cod_positives})")
+
+
+def segment_optimal_threshold(proba, y_true, mask, cost_fn=COST_FN, cost_fp=COST_FP):
+    ths = np.linspace(0.05, 0.95, 181)
+    best_t, best_cost = None, np.inf
+    proba_seg, y_seg = proba[mask], y_true[mask]
+    for t in ths:
+        pred = (proba_seg >= t).astype(int)
+        fp = ((pred == 1) & (y_seg == 0)).sum()
+        fn = ((pred == 0) & (y_seg == 1)).sum()
+        c = (fp * cost_fp + fn * cost_fn) / mask.sum()
+        if c < best_cost:
+            best_cost, best_t = c, t
+    return best_t, best_cost
+
+t_cod_seg, cost_cod_seg = segment_optimal_threshold(val_proba_hgb_calibrated, yval.values, val_cod_mask)
+t_ppd_seg, cost_ppd_seg = segment_optimal_threshold(val_proba_hgb_calibrated, yval.values, val_ppd_mask)
+print(f"Segment-specific thresholds (calibrated): COD={t_cod_seg:.3f} (₹{cost_cod_seg:.2f}/order)  "
+      f"Prepaid={t_ppd_seg:.3f} (₹{cost_ppd_seg:.2f}/order)")
+
+test_cod_mask = (test["payment_mode_COD"] == True).values
+test_ppd_mask = (test["payment_mode_Prepaid"] == True).values
+test_pred_seg = np.where(test_cod_mask,
+                          (test_proba_calibrated >= t_cod_seg).astype(int),
+                          (test_proba_calibrated >= t_ppd_seg).astype(int))
+
+tn_s, fp_s, fn_s, tp_s = confusion_matrix(ytest, test_pred_seg).ravel()
+cost_s = fp_s * COST_FP + fn_s * COST_FN
+ppd_tp_s = (test_ppd_mask & (test_pred_seg == 1) & (ytest.values == 1)).sum()
+ppd_pos = (test_ppd_mask & (ytest.values == 1)).sum()
+cod_tp_s = (test_cod_mask & (test_pred_seg == 1) & (ytest.values == 1)).sum()
+cod_pos = (test_cod_mask & (ytest.values == 1)).sum()
+print(f"[Segment-threshold, frozen TEST] TN={tn_s} FP={fp_s} FN={fn_s} TP={tp_s}  cost=₹{cost_s:,.0f}")
+print(f"Recall: Prepaid={ppd_tp_s/ppd_pos:.3f} ({ppd_tp_s}/{ppd_pos})  COD={cod_tp_s/cod_pos:.3f} ({cod_tp_s}/{cod_pos})")

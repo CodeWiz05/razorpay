@@ -1,104 +1,122 @@
 {
   "price": {
-    "importance": 0.004938843041877694,
+    "importance": 0.009408182026181783,
     "direction": "low",
-    "mean_returned": 1475.5848101064673,
-    "mean_not_returned": 1882.619466282968
+    "mean_returned": 1468.8403246554365,
+    "mean_not_returned": 1871.6690298775022
   },
   "discount_pct": {
-    "importance": 0.011078884142281985,
+    "importance": -0.00011303825233863196,
     "direction": "high",
-    "mean_returned": 27.558191641506436,
-    "mean_not_returned": 24.502127154596966
+    "mean_returned": 25.60938744257274,
+    "mean_not_returned": 24.845682700926204
   },
   "delivery_days": {
-    "importance": 0.017350983319077185,
+    "importance": 0.008480050519431043,
     "direction": "high",
-    "mean_returned": 4.137136500873987,
-    "mean_not_returned": 3.6565995193876644
+    "mean_returned": 4.069678407350689,
+    "mean_not_returned": 3.6704511502838364
   },
   "is_apparel": {
-    "importance": 0.029824599419522785,
+    "importance": -0.0006214213230727516,
     "direction": "high",
-    "mean_returned": 0.6353090735738122,
-    "mean_not_returned": 0.4149879846916071
+    "mean_returned": 0.6185298621745788,
+    "mean_not_returned": 0.42007768150582614
   },
   "customer_prior_orders": {
-    "importance": -0.0005623014114942038,
+    "importance": 6.982363596239605e-05,
     "direction": "high",
-    "mean_returned": 0.9426346734466868,
-    "mean_not_returned": 0.9075859613730086
+    "mean_returned": 0.9577335375191425,
+    "mean_not_returned": 0.9046907678518076
   },
   "customer_past_return_rate": {
-    "importance": 0.03796662511366258,
+    "importance": 0.03479331102163632,
     "direction": "high",
-    "mean_returned": 0.15152041951374548,
-    "mean_not_returned": 0.12443812857863354
+    "mean_returned": 0.15391898928024506,
+    "mean_not_returned": 0.12805885867941444
+  },
+  "is_festive": {
+    "importance": 0.0,
+    "direction": "high",
+    "mean_returned": 0.2693721286370597,
+    "mean_not_returned": 0.21708993128174484
+  },
+  "is_bracketed": {
+    "importance": 0.015907917549405893,
+    "direction": "low",
+    "mean_returned": 0.07442572741194486,
+    "mean_not_returned": 0.12276665670749926
+  },
+  "size_variant_count": {
+    "importance": 0.0014412544525117643,
+    "direction": "low",
+    "mean_returned": 1.146707503828484,
+    "mean_not_returned": 1.2456528234239617
   },
   "category_Beauty": {
-    "importance": 0.00026016127379716036,
+    "importance": -8.135379486640115e-05,
     "direction": "low",
-    "mean_returned": 0.11330049261083744,
-    "mean_not_returned": 0.15281692230100571
+    "mean_returned": 0.12649310872894334,
+    "mean_not_returned": 0.15246489393486704
   },
   "category_Electronics": {
-    "importance": -6.011314955353675e-05,
+    "importance": 0.000743841445382154,
     "direction": "low",
-    "mean_returned": 0.08565072302558398,
-    "mean_not_returned": 0.16480256326579049
+    "mean_returned": 0.08376722817764165,
+    "mean_not_returned": 0.163161039737078
   },
   "category_Fashion": {
-    "importance": 4.221516845784312e-05,
+    "importance": 0.0435834431547029,
     "direction": "high",
-    "mean_returned": 0.42745908151914824,
-    "mean_not_returned": 0.2753137330524817
+    "mean_returned": 0.47289433384379786,
+    "mean_not_returned": 0.26916641768748134
   },
   "category_Footwear": {
-    "importance": 0.00017200117207435972,
-    "direction": "high",
-    "mean_returned": 0.20784999205466392,
-    "mean_not_returned": 0.1396742516391254
+    "importance": 0.0029056889056304656,
+    "direction": "low",
+    "mean_returned": 0.145635528330781,
+    "mean_not_returned": 0.1509112638183448
   },
   "category_Grocery": {
-    "importance": 0.0005483783276629683,
+    "importance": 0.006060390955904671,
     "direction": "low",
-    "mean_returned": 0.07389162561576355,
-    "mean_not_returned": 0.10564571157326372
+    "mean_returned": 0.04946401225114855,
+    "mean_not_returned": 0.10905288317896623
   },
   "category_Home": {
-    "importance": 0.0004370814991186356,
+    "importance": 0.0009825422945521744,
     "direction": "low",
-    "mean_returned": 0.09184808517400286,
-    "mean_not_returned": 0.161746818168333
+    "mean_returned": 0.1217457886676876,
+    "mean_not_returned": 0.15524350164326262
   },
   "payment_mode_COD": {
-    "importance": 0.12341318480757615,
+    "importance": 0.1627904370131586,
     "direction": "high",
-    "mean_returned": 0.8924201493723184,
-    "mean_not_returned": 0.43421247812027175
+    "mean_returned": 0.8830015313935682,
+    "mean_not_returned": 0.4333134149985061
   },
   "payment_mode_Prepaid": {
-    "importance": -4.381001571090448e-05,
+    "importance": 6.473804417794771e-06,
     "direction": "low",
-    "mean_returned": 0.10757985062768155,
-    "mean_not_returned": 0.5657875218797283
+    "mean_returned": 0.11699846860643186,
+    "mean_not_returned": 0.5666865850014938
   },
   "pincode_tier_Tier1": {
-    "importance": -0.0002495802118833712,
+    "importance": 0.00010240889180073708,
     "direction": "low",
-    "mean_returned": 0.37803909105355155,
-    "mean_not_returned": 0.4691310410300531
+    "mean_returned": 0.3911179173047473,
+    "mean_not_returned": 0.4640872423065432
   },
   "pincode_tier_Tier2": {
-    "importance": -0.00011535216960266715,
+    "importance": -0.00035777525186899697,
     "direction": "low",
-    "mean_returned": 0.3170189098998888,
-    "mean_not_returned": 0.3517666953451805
+    "mean_returned": 0.31638591117917303,
+    "mean_not_returned": 0.3558111741858381
   },
   "pincode_tier_Tier3": {
-    "importance": 0.008237612170535868,
+    "importance": 0.00990873381475833,
     "direction": "high",
-    "mean_returned": 0.30494199904655966,
-    "mean_not_returned": 0.17910226362476636
+    "mean_returned": 0.29249617151607965,
+    "mean_not_returned": 0.18010158350761876
   }
 }

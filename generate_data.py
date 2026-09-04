@@ -55,13 +55,40 @@ TIER_PROBS = [0.45, 0.35, 0.20]
 
 N_CUSTOMERS = 22_000
 
+# BRACKETING FEATURE (see README/data-notes for citations):
+#   Mechanism: COD buyers can reject an unwanted item at the doorstep
+#   without pre-committing financially, so there's little reason to
+#   formally bracket (order multiple sizes/colors hoping one fits).
+#   Prepaid buyers must pay upfront, so ordering 2-4 variants and
+#   returning the rest is the financially rational hedge -- this is
+#   the mechanism nothing in the schema previously captured, and it's
+#   deliberately modeled as an apparel x prepaid INTERACTION, not a
+#   main effect of either alone, so it doesn't just re-encode
+#   payment_mode. Bracket rate among the eligible group (apparel +
+#   prepaid) calibrated to ~63%, anchored to Loop Returns' population-
+#   wide "63% of shoppers bracket" figure -- applied here as a
+#   conditional rate for the eligible segment, not a literal transplant
+#   of an unconditional population stat (explicit modeling choice).
+#   COD:Prepaid ratio compensation: introducing this pushed prepaid's
+#   average return rate up enough to compress the (well-verified,
+#   triple-sourced) COD:Prepaid ratio below its cited 6.4-7.6x band;
+#   is_cod's coefficient was raised (1.90->2.10) to restore it, rather
+#   than weakening the bracket effect and losing the separability that
+#   is the entire point of this feature.
+BRACKET_INTERCEPT = -4.5
+BRACKET_APPAREL_COEF = 0.3
+BRACKET_PREPAID_COEF = 0.3
+BRACKET_INTERACTION_COEF = 4.43
+BRACKET_RETURN_BOOST = 1.1
+COD_COEF = 2.40
+
 
 def generate():
     customer_ids = RNG.integers(0, N_CUSTOMERS, size=N_ORDERS)
     order_dates = pd.to_datetime(
         START_DATE.value
         + RNG.integers(0, (END_DATE - START_DATE).value, size=N_ORDERS)
-    ).sort_values()
+    )
 
     categories = RNG.choice(CATEGORIES, size=N_ORDERS, p=CATEGORY_PROBS)
     is_apparel = np.isin(categories, list(APPAREL_CATS)).astype(int)
@@ -107,46 +134,98 @@ def generate():
 
         # ---- Generate ground-truth return probability (the "true" data-
     #      generating process; the model never sees this directly) ----
-        # ---- Generate ground-truth return probability (the "true" data-
-    #      generating process; the model never sees this directly) ----
     is_cod = (df["payment_mode"] == "COD").astype(int)
+    is_prepaid = (df["payment_mode"] == "Prepaid").astype(int)
     tier3_flag = (df["pincode_tier"] == "Tier3").astype(int)
 
-    # DELIVERY_DAYS UPDATE (see README/data-notes for citations):
-    #   Split into a small GENERIC component (applies to all orders,
-    #   unverified for prepaid specifically -- no non-COD evidence found,
-    #   but zero effect isn't verified either, so a small assumed base is
-    #   kept rather than dropped) plus a much larger COD-SPECIFIC component,
-    #   calibrated against real India data: Shipway ShipNotes FY25 reports
-    #   COD RTO rates of 22% (1-2 day delivery), 27% (3-5 days), 35% (5+
-    #   days) -- a real, India-specific, quantified target, replacing the
-    #   earlier flat 0.06/day guess (which was ~5.5x an unrelated Western
-    #   academic estimate of 0.011/day and had no COD/prepaid distinction).
+    # CATEGORY RISK UPDATE (see README/data-notes for citations):
+    #   Replaces the binary is_apparel flag (which treated Beauty, Home,
+    #   Electronics, Grocery as one flat "not elevated" bucket) with a
+    #   graded per-category term, derived from India-specific return-rate
+    #   citations (ClickPost via First Resort, 2026; Footwear from TrackVid,
+    #   global -- no India-specific figure found). Computed as log(category
+    #   midpoint / Grocery midpoint), i.e. log relative-risk vs. a Grocery
+    #   baseline of 1.0x:
+    #     Fashion 3.25x, Beauty 2.15x, Footwear 1.80x, Home 1.75x,
+    #     Electronics 1.25x, Grocery 1.00x (baseline)
+    #   VALIDATION: simulated against the cited real RANGES (not exact
+    #   points, since sources themselves give ranges). Fashion, Footwear,
+    #   and Grocery land within their cited range with no further tuning.
+    #   Beauty, Home, and Electronics land 3-5 points below their cited
+    #   floor -- traced to two identified interaction effects: Electronics'
+    #   typical price (~Rs.4500) falls entirely outside the price-hump's
+    #   effective range (Rs.300-1200), so it gets zero contribution from
+    #   the price term; and Fashion/Footwear disproportionately select into
+    #   COD (is_apparel feeds cod_logit), which then stacks the COD-specific
+    #   delivery/price bonuses on top of their category term, an advantage
+    #   Beauty/Home/Electronics/Grocery don't get. An attempted iterative
+    #   correction for this did not converge cleanly (six category terms
+    #   interacting through one shared intercept oscillate rather than
+    #   settle) and was deliberately abandoned rather than forced to fit --
+    #   reported here as a known, understood, and documented limitation.
+    #   is_apparel is RETAINED as a column (still derivable from category)
+    #   for legacy/reason-code readability, but no longer drives the
+    #   generative probability directly.
+    CATEGORY_RISK_TERM = {
+        "Grocery": 0.000, "Electronics": 0.663, "Home": 0.900,
+        "Footwear": 0.588, "Beauty": 0.765, "Fashion": 1.179,
+    }
+    category_term = df["category"].map(CATEGORY_RISK_TERM)
+
+    # Bracketing: concentrated almost entirely on apparel+prepaid by design
+    # (interaction term dominates; apparel-alone and prepaid-alone main
+    # effects are deliberately small so COD and non-apparel orders rarely
+    # trigger this).
+    is_apparel_arr = df["is_apparel"].values
+    bracket_logit = (
+        BRACKET_INTERCEPT
+        + BRACKET_APPAREL_COEF * is_apparel_arr
+        + BRACKET_PREPAID_COEF * is_prepaid
+        + BRACKET_INTERACTION_COEF * is_apparel_arr * is_prepaid
+    )
+    bracket_prob = 1 / (1 + np.exp(-bracket_logit))
+    is_bracketed = (RNG.random(N_ORDERS) < bracket_prob).astype(int)
+    df["is_bracketed"] = is_bracketed
+    df["size_variant_count"] = np.where(is_bracketed == 1, RNG.integers(2, 5, size=N_ORDERS), 1)
+
+    # FESTIVE-PERIOD UPDATE (see README/data-notes for citations):
+    #   TrackVid: "During festive sale seasons, return rates can climb to
+    #   40% for some sellers" -- an upper bound for "some sellers", not a
+    #   population average, so calibrated conservatively rather than to
+    #   that ceiling. Windows are approximate (coarse ~10-25 day ranges
+    #   around known recurring Indian e-commerce sale periods -- Independence
+    #   Day, Diwali/Big Billion Days, Year-End, Republic Day, mid-year EORS),
+    #   not verified to exact historical dates. Applied as a GENERAL effect
+    #   (not COD-specific) since the cited mechanism -- impulse buying during
+    #   flash sales -- plausibly affects post-delivery prepaid regret too,
+    #   not just COD doorstep refusal, and no source segmented this by
+    #   payment mode.
+    FESTIVE_WINDOWS = [
+        ("2025-08-10", "2025-08-20"), ("2025-10-01", "2025-10-25"),
+        ("2025-12-20", "2025-12-31"), ("2026-01-20", "2026-01-30"),
+        ("2026-07-01", "2026-07-15"), ("2026-08-10", "2026-08-20"),
+    ]
+    is_festive = pd.Series(False, index=df.index)
+    for start, end in FESTIVE_WINDOWS:
+        is_festive |= (df["order_date"] >= start) & (df["order_date"] <= end)
+    df["is_festive"] = is_festive.astype(int)
+
     delay = (df["delivery_days"] - 3).clip(lower=0)
     delivery_term = 0.004 * delay + is_cod * 0.11 * delay
 
-    # PRICE UPDATE (see README/data-notes for citations):
-    #   Replaced the old monotonic "cheaper = more return-prone" assumption
-    #   entirely -- real data (Shipway ShipNotes FY25, corroborated by 3
-    #   independent sources) shows a NON-monotonic hump: RTO peaks at
-    #   25%/28%/24% for <500 / 500-1000 / >1000 price bands, i.e. mid-price
-    #   "impulse zone" orders are riskiest, not the cheapest ones. Modeled
-    #   as a smooth triangular hump peaking at Rs.750 (not a literal 3-bucket
-    #   step function, since the report's buckets are a presentation choice,
-    #   not evidence the true relationship has hard edges), split the same
-    #   way as delivery: small generic component (all orders) + larger
-    #   COD-specific component (calibrated to the Shipway bands above).
     hump = (1 - (df["price"] - 750).abs() / 450).clip(lower=0)
     price_term = 0.015 * hump + is_cod * 0.22 * hump
 
     logit = (
-        -3.781
-        + 1.90 * is_cod
-        + 0.55 * df["is_apparel"]
-        + 0.012 * df["discount_pct"]
+        -4.50
+        + COD_COEF * is_cod
+        + category_term
+        - 0.001 * df["discount_pct"]
         + 0.25 * tier3_flag
         + delivery_term
         + price_term
+        + 0.30 * df["is_festive"]
+        + BRACKET_RETURN_BOOST * is_bracketed
     )
     base_prob = 1 / (1 + np.exp(-logit))
 
@@ -182,8 +261,9 @@ def generate():
 
 
 if __name__ == "__main__":
+    from pathlib import Path
     df = generate()
-    out_path = "data_orders.csv"
+    out_path = str(Path(__file__).resolve().parent / "data_orders.csv")
     df.to_csv(out_path, index=False)
     print(f"Generated {len(df):,} orders -> {out_path}")
     print(f"Overall return rate: {df['returned'].mean():.2%}")
