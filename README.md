@@ -204,6 +204,7 @@ All model artifacts (`*.joblib`, `*.npy`) are gitignored and regenerable by re-r
 Compiled from all research used to calibrate `generate_data.py`, cost assumptions, and feature design. Grouped by topic; source-quality tiering at the end.
 
 **COD vs. Prepaid return/RTO rate**
+
 1. MediaBrief - Shipway ShipNotes FY25 announcement: https://mediabrief.com/shipnotes-reveals-26-rto-rate-on-cod-orders-across-india/
 2. Amazon Shipping India - RTO explainer: https://shipping.amazon.in/blog/what-is-rto-how-to-reduce-return-to-origin
 3. Shipway blog: https://blog.shipway.com/ecommerce-logistics-summer-sale-india/
@@ -216,12 +217,14 @@ Compiled from all research used to calibrate `generate_data.py`, cost assumption
 10. bepragma - Reduce RTO in Indian e-commerce: https://www.bepragma.ai/blogs/how-to-reduce-rto-in-indian-e-commerce-without-hurting-cod-orders
 
 **Price-band and delivery-speed effects**
+
 11. EasySell - COD order value/RTO/delivery: https://easysellapp.com/blogs/wiki/cod-order-value-rto-rate-price-range-delivery
 12. Masuch, Landwehr & Flath (2024), "The faster, the better?", *Journal of Retailing* 100: https://www.sciencedirect.com/science/article/pii/S0022435924000393
 13. ResearchGate mirror of #12: https://www.researchgate.net/publication/383208952_The_faster_the_better_The_impact_of_short_delivery_times_on_product_returns_in_online_retailing
 14. Full-text mirror of #12: https://d-nb.info/1373505605/34
 
 **RTO/logistics and verification cost**
+
 15. Metaport.in - Convert COD to prepaid: https://metaport.in/how-to-convert-cod-orders-to-prepaid/
 16. bepragma (cost figures, same as #10)
 17. Caller Digital - AI voice bot for COD verification: https://caller.digital/ai-voice-bot-for-cod-verification
@@ -229,9 +232,11 @@ Compiled from all research used to calibrate `generate_data.py`, cost assumption
 19. Caller Digital - per-minute vs per-outcome pricing: https://caller.digital/blog/voice-ai-per-minute-vs-per-outcome-pricing-india-2026
 
 **Discount effect on returns**
+
 20. "Promoting product returns? The impact of at-purchase and post-purchase discounts...": https://www.sciencedirect.com/science/article/pii/S0022435925000375
 
 **Category-level return rates**
+
 21. ClickPost - RTO reduction tools: https://www.clickpost.ai/blog/rto-reduction-tools
 22. ClickPost - Returns management for fashion: https://www.clickpost.ai/returns-management-software/for-fashion
 23. TrackVid - Ecommerce return statistics 2026: https://trackvid.in/blogs/ecommerce-return-statistics.html
@@ -246,20 +251,24 @@ Compiled from all research used to calibrate `generate_data.py`, cost assumption
 39. Eightx - Overall ecommerce return rate 2026 (global): https://eightx.co/blog/average-ecommerce-return-rate
 
 **Serial returners / bracketing**
+
 28. Signifyd - Ecommerce serial returners: https://www.signifyd.com/blog/ecommerce-serial-returners/
 29. Claimlane - Managing repeat returns: https://www.claimlane.com/resources/blog/how-to-manage-repeat-returns
 30. NHIMG - Serial returners summary: https://nhimg.org/community/identity-beyond-iam/ecommerce-serial-returners-what-teams-need-to-act-on-now/
 
 **Prepaid-specific return drivers**
+
 7. First Resort (as above) - cites GoKwik's 60–70% RTO-buying-psychology figure
 
 **Independent cross-validation**
+
 31. Pakistan's Largest E-Commerce Dataset (Open Data Pakistan mirror): https://opendata.com.pk/dataset/pakistan-largest-ecommerce-dataset/resource/7395e1d0-c02b-4e1d-abb8-84ae52681ffb
 32. Original Kaggle listing (search "zusmani Pakistan Largest Ecommerce Dataset")
 33. Olist Brazilian E-Commerce dataset (ruled out - no COD field): Kaggle, search "olist brazilian ecommerce"
 34. UCI Online Retail dataset (ruled out - no COD field): https://archive.ics.uci.edu/dataset/352/online+retail
 
 **Overall baseline & customer-scaling defensibility**
+
 23. TrackVid (as above) - global 19–20.5%, India section included
 7. First Resort (as above) - Unicommerce FY23 all-category baseline, 10.4%
 40. Frameleads - Purchase Frequency glossary: https://frameleads.com/glossary/purchase-frequency
