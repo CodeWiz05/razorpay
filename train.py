@@ -55,12 +55,8 @@ baseline_recall = recall_score(yval, baseline_flag_val)
 print(f"\n[Rule baseline: flag all COD+apparel] val precision={baseline_precision:.3f} recall={baseline_recall:.3f}")
 
 # ---------------- Model 1: Logistic Regression (interpretable) -------------
-# Drops one reference dummy per categorical group (COD, Grocery, Tier1 --
-# chosen to match the baselines already used elsewhere: Grocery is the
-# generative model's own 1.0x category baseline) so coefficients are
-# uniquely interpretable. Scoped to LogReg only -- HGB/XGBoost and every
-# other reference to payment_mode_COD/etc. elsewhere in this file are
-# untouched.
+# Drops one reference dummy per categorical group for interpretable
+# coefficients. Scoped to LogReg only -- HGB/XGBoost use the full dummy set.
 logreg_ref_cols = {"payment_mode_COD", "category_Grocery", "pincode_tier_Tier1"}
 logreg_feature_cols = [c for c in feature_cols if c not in logreg_ref_cols]
 
@@ -86,16 +82,9 @@ hgb_baseline_ref = hgb
 val_proba_hgb_baseline_ref = val_proba_hgb
 
 # ---------------- PRODUCTION MODEL: damped segment-weighted HGB -----------
-# DECISION (see prepaid-gap investigation / README for full reasoning):
-# the unweighted baseline above is NOT what ships. Production uses
-# sample-weighted training (bucket-balanced across payment_mode x returned,
-# dampened by exponent 0.3) -- this was the exponent selected by BOTH the
-# blended-cost and macro-cost criteria in the dampening sweep, and it
-# reduced missed prepaid returns by ~25% at a ~3-4% cost increase relative
-# to the unweighted baseline. From this point on, `hgb` / `val_proba_hgb`
-# refer to THIS model -- every downstream step (threshold selection, frozen
-# TEST evaluation, calibration, reason codes, model.joblib) operates on the
-# production model, not the baseline.
+# See README Section 2 [methodology] for why this replaces the baseline above.
+# From here on, `hgb` / `val_proba_hgb` refer to THIS model -- every
+# downstream step operates on the production model, not the baseline.
 train_mode = train["payment_mode_Prepaid"].map({True: "Prepaid", False: "COD"})
 bucket_counts = train_mode.astype(str).str.cat(ytr.astype(str), sep="_").value_counts()
 n_buckets = 4
@@ -128,53 +117,25 @@ print(f"[XGB]    val PR-AUC={average_precision_score(yval, val_proba_xgb):.3f} "
       f"ROC-AUC={roc_auc_score(yval, val_proba_xgb):.3f}")
 
 # ---------------- Cost-sensitive threshold selection (on VAL only) ---------
-# Cost assumptions (documented, editable):
-#   FN (missed return, order ships normally) -> cost = avg reverse-logistics
-#       + restocking loss if the return does happen anyway later ~ INR 180
-#   FP (order wrongly flagged -> extra verification/OTP/address-confirmation
-#       step for a customer who would NOT have returned) -> cost = customer
-#       friction / support-team review cost ~ INR 25
+# Cost derivation: see README Section 3.6 [cost-assumptions].
 COST_FN = 180.0
 COST_FP = 25.0
 
-# ---------------- Calibrate BEFORE threshold selection (fix: was reversed) -
-# Previously the threshold was grid-searched on RAW val_proba_hgb, and
-# calibration was fit afterward -- so the operating threshold was chosen on
-# a probability scale that got rescaled before TEST was ever touched.
-# Fit calibrator on the production model's raw val scores, then do
-# everything downstream (threshold search, TEST decision) on CALIBRATED
-# probabilities. Isotonic regression is monotonic, so this does NOT change
-# PR-AUC/ROC-AUC (rank-invariant) -- it only changes which cut point maps
-# to which precision/recall/cost, which is exactly the thing that was wrong.
+# ---------------- Calibrate BEFORE threshold selection ---------------------
+# Do NOT move this after threshold search -- see README Section 2
+# [methodology] for why that ordering was a bug (fixed here).
 calibrator = IsotonicRegression(out_of_bounds="clip")
 calibrator.fit(val_proba_hgb, yval)
 val_proba_hgb_calibrated = calibrator.predict(val_proba_hgb)
 
-# Closed-form cost-optimal threshold, for a well-calibrated probability:
-# flag iff p * COST_FN > (1-p) * COST_FP  =>  p > COST_FP/(COST_FP+COST_FN)
-# Zero sampling variance -- doesn't touch val at all. Compare this against
-# whatever the grid search below lands on; if they diverge a lot, that's a
-# signal calibration isn't as clean as it looks in aggregate (see note below).
+# Closed-form cost-optimal threshold (zero sampling variance) -- used as a
+# stability check against the grid search below. See README Section 2.
 closed_form_threshold = COST_FP / (COST_FP + COST_FN)
 print(f"\n[Closed-form cost-optimal threshold] p = {closed_form_threshold:.4f}")
 
-# SELECTION CRITERION: MACRO-averaged cost-per-order across payment_mode
-# segments, NOT blended total cost.
-#
-# WHY: blended total cost sums errors across all orders, which means
-# whichever segment has more volume (COD, ~2/3 of orders here) dominates
-# the total by sheer count -- so minimizing blended cost will always
-# favor whatever helps the majority segment, even when the minority
-# segment (Prepaid) is where most of the model's errors concentrate.
-# We verified this directly: sweeping a correction mechanism aimed at
-# prepaid orders across three strengths showed blended-cost selection
-# monotonically preferred the WEAKEST correction every time, regardless
-# of which strengths were tried -- the criterion itself reproduces the
-# same bias the model has. Macro-averaging (mean of COD cost-per-order
-# and Prepaid cost-per-order, each segment weighted equally regardless
-# of volume) fixes this at the selection-rule level, not just the
-# model level. See experiments/prepaid_gap_investigation.py for the
-# full comparison that motivated this change.
+# Selection criterion: MACRO-averaged cost-per-order, not blended total --
+# blended cost favors the majority segment (COD) by volume. See README
+# Section 2 [methodology] and experiments/prepaid_gap_investigation.py.
 val_cod_mask = (val["payment_mode_COD"] == True).values
 val_ppd_mask = (val["payment_mode_Prepaid"] == True).values
 
@@ -267,21 +228,17 @@ from sklearn.metrics import matthews_corrcoef
 test_mcc = matthews_corrcoef(ytest, test_pred)
 print(f"MCC:       {test_mcc:.3f}")
 
-# ---------------- Calibration (isotonic, fit on VAL) ------------------------
-# Recreates the calibration step your project notes describe but that has
-# no corresponding file in this codebase -- see chat for why this is being
-# added now rather than assumed already done.
+# ---------------- Brier score: raw vs. calibrated --------------------------
+# Calibrator was already fit above (before threshold selection); this only
+# reports the improvement, it does not fit anything new.
 brier_raw = brier_score_loss(ytest, test_proba)
 brier_cal = brier_score_loss(ytest, test_proba_calibrated)
 print(f"\nBrier score (raw):        {brier_raw:.4f}")
 print(f"Brier score (calibrated): {brier_cal:.4f}")
 
 # ---------------- Reason codes: importance-ranked, direction-aware ---------
-# Global permutation importance = WHICH features matter most overall.
-# Mean feature value among returned vs. non-returned TRAIN orders = WHICH
-# DIRECTION each feature pushes risk. Serving time then checks a given
-# order's own values against that direction -- coarse, FICO-style reason
-# codes, not a raw model-internals dump. See serve.py for how this is used.
+# Coarse, FICO-style reason codes, not a raw model-internals dump.
+# See README Section 2 [methodology] and serve.py for how this is used.
 perm_result = permutation_importance(
     hgb, Xval, yval, scoring="average_precision", n_repeats=10, random_state=42
 )
@@ -375,10 +332,8 @@ fn_prepaid_share_final = fn_prepaid_count_final / fn_mask_final.sum()
 print(f"\nProduction model FN breakdown: {int(fn_mask_final.sum())} total FN, "
       f"{int(fn_prepaid_count_final)} prepaid ({fn_prepaid_share_final:.1%})")
 
-# Recall by segment -- the number that actually answers "did prepaid detection
-# improve," since FN share alone can move just from overall threshold shifts
-# (see change log: FN share dropped 77.9%->58.4% in one run while prepaid FN
-# COUNT rose 109->132 -- share was misleading there, recall is the real check).
+# Recall by segment, not FN share -- FN share can mislead when the FN count
+# itself changes. See README Section 5 [what-we-tried-and-rejected].
 tp_mask_final = (test_pred == 1) & (ytest.values == 1)
 cod_mask_final = ~test_ppd_mask_final
 
@@ -393,16 +348,13 @@ print(f"Production model recall by segment: "
       f"Prepaid={ppd_recall:.3f} ({ppd_tp}/{ppd_positives})  "
       f"COD={cod_recall:.3f} ({cod_tp}/{cod_positives})")
 
-# Same damped sample-weight, different architecture -- tests whether the
-# result is a property of the sparse prepaid-positive signal itself
-# (architecture-agnostic), or specifically a limitation of HGB's response
-# to sample weighting.
+# Same weighting, different architecture -- tests whether the prepaid gap
+# is architecture-agnostic. See README Section 6 [known-limitations].
 xgb_damped = XGBClassifier(
     n_estimators=300, learning_rate=0.06, max_depth=5,
     random_state=42, eval_metric="aucpr", n_jobs=-1,
-    # NOTE: no scale_pos_weight here -- sample_weight_damped already
-    # encodes the correction; combining both would double-correct, same
-    # reasoning as dropping class_weight="balanced" for the HGB version.
+    # No scale_pos_weight -- sample_weight_damped already corrects; combining
+    # both would double-correct (same reasoning as the HGB version above).
 )
 xgb_damped.fit(Xtr, ytr, sample_weight=sample_weight_damped)
 val_proba_xgb_damped = xgb_damped.predict_proba(Xval)[:, 1]

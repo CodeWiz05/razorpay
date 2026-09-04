@@ -1,38 +1,27 @@
 """
 train_fraud.py
 ===============
-SECONDARY ARTIFACT — demonstrates the same evaluation methodology used in
-the primary Return-Risk Scorer (temporal split, cost-sensitive threshold
-chosen on VAL only, single frozen TEST evaluation, calibration) applied to
-a genuinely REAL dataset, since no usable real return dataset was found.
+SECONDARY ARTIFACT: same evaluation methodology as the primary Return-Risk
+Scorer (temporal split, cost-sensitive threshold on VAL only, calibrate
+before threshold search, single frozen TEST pass) applied to a genuinely
+REAL dataset, since no usable real return dataset was found.
 
-DATA: ULB European credit-card-fraud dataset (Kaggle "creditcard.csv").
-  - 284,807 real anonymized transactions over ~48 hours.
-  - Features V1-V28 are PCA components (privacy-anonymized) -- NOT
-    human-interpretable. This means, unlike the primary artifact:
-      * NO reason codes are produced here. A permutation-importance list
-        naming "V14" conveys nothing to a reviewer -- this is a stated
-        limitation of the dataset, not an oversight.
-      * NO customer/account identifier exists, so there is no equivalent
-        of `customer_past_return_rate`. There is nothing here that could
-        replicate the primary artifact's leakage bug (no per-entity
-        history to leak). The only leakage risk in THIS artifact is
-        ordinary train/test temporal contamination, guarded against the
-        same way: strict time-ordered split, test touched once.
+DATA: ULB European credit-card-fraud dataset (Kaggle "creditcard.csv"),
+284,807 real anonymized transactions over ~48 hours. V1-V28 are PCA
+components (privacy-anonymized) -- NOT human-interpretable, so no reason
+codes are produced here (stated limitation, not oversight). No customer
+identifier exists, so there is nothing to replicate the primary artifact's
+leakage bug against; the only leakage risk here is ordinary train/test
+temporal contamination, guarded the same way (time-ordered split, test
+touched once).
 
-TIME SPAN CAVEAT: the dataset covers ~48 hours, not months. The temporal
-split below is proportional (60/20/20 by Time percentile) rather than
-calendar-based. This still prevents the model from training on the future,
-but it is a much thinner test of temporal generalization than the primary
-artifact's 8/2/2-month split -- state this plainly in any writeup, do not
-imply a stronger claim than 2 days of data supports.
+TIME SPAN CAVEAT: ~48 hours, not months. Split is proportional (60/20/20
+by Time percentile), not calendar-based -- a much thinner test of temporal
+generalization than the primary artifact's 8/2/2-month split.
 
-COST CAVEAT: FN/FP costs below are placeholders grounded loosely in this
-dataset's own Amount field (mean fraudulent transaction ~$122), NOT
-researched chargeback/investigation figures, and NOT in INR -- do not mix
-these numbers with the primary artifact's Rs.180/Rs.25 cost model in any
-combined report. They are illustrative only, exactly like the primary
-artifact's costs.
+COST CAVEAT: FN/FP costs are USD-scale placeholders grounded loosely in
+this dataset's own Amount field, NOT researched, NOT comparable to the
+primary artifact's Rs.180/Rs.25 -- do not mix the two in any combined report.
 """
 import numpy as np
 import pandas as pd
@@ -46,9 +35,10 @@ from sklearn.calibration import CalibratedClassifierCV
 from sklearn.frozen import FrozenEstimator
 from sklearn.metrics import brier_score_loss
 import joblib
+from pathlib import Path
 
-DATA_PATH = "C:/Numair/Coding/Razorpay/creditcard.csv"
-OUT = "C:/Numair/Coding/Razorpay/outputs"
+DATA_PATH = str(Path(__file__).resolve().parent / "creditcard.csv")
+OUT = str(Path(__file__).resolve().parent / "outputs")
 
 df = pd.read_csv(DATA_PATH).sort_values("Time").reset_index(drop=True)
 feature_cols = [c for c in df.columns if c.startswith("V")] + ["Amount"]
@@ -91,29 +81,30 @@ val_proba_xgb = xgb_candidate.predict_proba(Xval)[:, 1]
 prauc_xgb = average_precision_score(yval, val_proba_xgb)
 print(f"[XGB] val PR-AUC={prauc_xgb:.3f} ROC-AUC={roc_auc_score(yval, val_proba_xgb):.3f}")
 
-# Winner decided HERE, in this run, on VAL only -- not by comparing against
-# a different script execution that may have used a different library
-# version (see the sklearn/XGBoost reproducibility issue earlier in this
-# project's history: cross-run comparisons are not apples-to-apples).
+# Winner decided HERE, on VAL only in this run -- not compared against a
+# different execution that may have used a different library version.
 if prauc_xgb >= prauc_hgb:
     hgb, val_proba, primary_name = xgb_candidate, val_proba_xgb, "XGB"
 else:
     hgb, val_proba, primary_name = hgb_candidate, val_proba_hgb, "HGB"
 print(f"Primary model selected: {primary_name} (higher VAL PR-AUC)")
 
+# ---------------- Calibrate BEFORE threshold selection ---------------------
+# Same ordering fix as train.py (see README Section 2 [methodology]) --
+# fit calibrator on VAL, then search the threshold on calibrated probabilities.
+calibrated = CalibratedClassifierCV(FrozenEstimator(hgb), method="isotonic")
+calibrated.fit(Xval, yval)
+val_proba_calibrated = calibrated.predict_proba(Xval)[:, 1]
+
 # ---------------- Cost-sensitive threshold selection (VAL only) ------------
-# PLACEHOLDER costs -- not researched, not INR, not comparable to the
-# primary artifact's Rs.180/Rs.25. Grounded loosely in this dataset's own
-# mean fraud Amount (~$122) as a lower-bound proxy for FN cost; FP cost is
-# an arbitrary small friction estimate analogous in spirit to the primary
-# artifact's Rs.25 (not derived from any real decline-cost figure).
+# Placeholder costs -- see module docstring. Not researched, not INR.
 COST_FN = 120.0   # ~ mean fraudulent transaction amount in this dataset
 COST_FP = 5.0     # placeholder friction cost of a false decline
 
 thresholds = np.linspace(0.01, 0.99, 197)
 costs = []
 for t in thresholds:
-    pred = (val_proba >= t).astype(int)
+    pred = (val_proba_calibrated >= t).astype(int)
     fp = ((pred == 1) & (yval.values == 0)).sum()
     fn = ((pred == 0) & (yval.values == 1)).sum()
     costs.append(fp * COST_FP + fn * COST_FN)
@@ -122,18 +113,13 @@ best_idx = costs.argmin()
 best_threshold = thresholds[best_idx]
 
 cost_flag_none = (yval.values == 1).sum() * COST_FN
-print(f"\nCost-optimal threshold (VAL, FN=${COST_FN:.0f} FP=${COST_FP:.0f}): {best_threshold:.3f}")
+print(f"\nCost-optimal threshold (VAL, calibrated scale, FN=${COST_FN:.0f} FP=${COST_FP:.0f}): {best_threshold:.3f}")
 print(f"  Val cost at that threshold: ${costs[best_idx]:,.0f}  vs flag-none ${cost_flag_none:,.0f}")
-
-# ---------------- Calibration (isotonic, same choice as primary) -----------
-# Fit on VAL, applied at inference -- mirrors calibrate.py's approach.
-calibrated = CalibratedClassifierCV(FrozenEstimator(hgb), method="isotonic")
-calibrated.fit(Xval, yval)
 
 # ---------------- FROZEN, single-shot evaluation on TEST -------------------
 test_proba = hgb.predict_proba(Xtest)[:, 1]
 test_proba_cal = calibrated.predict_proba(Xtest)[:, 1]
-test_pred = (test_proba >= best_threshold).astype(int)
+test_pred = (test_proba_cal >= best_threshold).astype(int)
 
 test_precision = precision_score(ytest, test_pred)
 test_recall = recall_score(ytest, test_pred)
@@ -162,18 +148,16 @@ brier_ratio = brier_raw / brier_cal if brier_cal > 0 else float("inf")
 print(f"\nBrier score (raw {primary_name}):        {brier_raw:.5f}")
 print(f"Brier score (isotonic-calib): {brier_cal:.5f}")
 print(f"Raw-to-calibrated ratio: {brier_ratio:.2f}x")
-print("NOTE: absolute Brier values are naturally tiny at a 0.13% base rate")
-print("(always predicting ~0.0013 would already score near-zero) -- the")
+print("NOTE: absolute Brier values are tiny at this 0.13% base rate -- the")
 print("improvement RATIO is the meaningful number, not the absolute value.")
-print("NOTE: calibration reliability diagram omitted for this artifact --")
-print("with only 75 positives and this base rate, quantile-binned")
-print("calibration curves collapse near the origin and are not informative.")
-print("\nNOTE: No reason codes are generated for this artifact -- V1-V28 are")
-print("PCA-anonymized and not human-interpretable. See module docstring.")
+print("NOTE: calibration reliability diagram omitted -- with only 75")
+print("positives, quantile-binned calibration curves aren't informative.")
+print("NOTE: No reason codes -- V1-V28 are PCA-anonymized, see module docstring.")
 
 # ---------------- Save everything -------------------------------------------
 joblib.dump(hgb, f"{OUT}/model_fraud.joblib")
 np.save(f"{OUT}/val_proba_fraud.npy", val_proba)
+np.save(f"{OUT}/val_proba_fraud_calibrated.npy", val_proba_calibrated)
 np.save(f"{OUT}/val_y_fraud.npy", yval.values)
 np.save(f"{OUT}/test_proba_fraud.npy", test_proba)
 np.save(f"{OUT}/test_proba_fraud_calibrated.npy", test_proba_cal)
@@ -184,6 +168,7 @@ summary = {
     "time_span_hours": round(df["Time"].max() / 3600, 1),
     "split_method": "proportional 60/20/20 by Time percentile (no calendar structure available)",
     "best_threshold": best_threshold,
+    "threshold_scale_note": "calibrated (isotonic) scale, not raw -- see README Section 2 [methodology]",
     "test_precision": test_precision, "test_recall": test_recall,
     "test_f1": test_f1, "test_prauc": test_prauc, "test_rocauc": test_rocauc,
     "tn": int(tn), "fp": int(fp), "fn": int(fn), "tp": int(tp),

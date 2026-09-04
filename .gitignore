@@ -11,8 +11,3 @@ __pycache__/
 
 # real third-party data (not ours to redistribute)
 creditcard.csv
-
-throw.py
-
-add_interaction_features.py
-add_segment_features.py

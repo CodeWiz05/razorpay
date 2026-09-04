@@ -3,16 +3,11 @@ features.py
 ============
 Loads orders.csv and builds the model-ready feature matrix.
 
-LEAKAGE NOTES (read before changing anything):
-  - `customer_past_return_rate` and `customer_prior_orders` were already
-    computed in generate_data.py using ONLY orders strictly before the
-    current one, per customer, in time order. If you rebuild this from a
-    real dataset, you MUST reproduce that expanding-window logic -- do NOT
-    compute a customer's return rate over their FULL history and then
-    join it back onto their earlier orders. That is the single most common
-    leakage bug in return/fraud modeling.
-  - The train/val/test split in train.py is TEMPORAL (by order_date), not
-    random. A random split leaks future customer behavior into training.
+LEAKAGE WARNING: customer_past_return_rate / customer_prior_orders use an
+expanding window (prior orders only, per customer, in time order). If
+rebuilding from real data, do NOT compute over full history then join back
+-- this is the most common leakage bug in return/fraud modeling. The
+train/val/test split in train.py is temporal (order_date), not random.
 """
 import pandas as pd
 from pathlib import Path

@@ -8,12 +8,8 @@ RUN ORDER MATTERS -- two processes, two terminals:
     Terminal 1:  uvicorn serve:app --reload --port 8000
     Terminal 2:  streamlit run app.py
 
-WHY TWO SIDE-BY-SIDE VIEWS: serve.py deliberately returns a different
-response shape depending on `reviewer_view` (see serve.py's docstring for
-the defense-only reasoning -- a checkout-facing caller never sees the raw
-score or exact threshold, only a coarse decision). This demo shows BOTH
-side by side specifically so a reviewer can see that distinction working
-live, rather than just reading about it.
+Shows both response views side by side. See README Section 4
+[defense-only-statement] for why serve.py returns two different shapes.
 """
 import requests
 import streamlit as st
@@ -31,9 +27,7 @@ CATEGORIES = ["Fashion", "Footwear", "Electronics", "Beauty", "Home", "Grocery"]
 PAYMENT_MODES = ["COD", "Prepaid"]
 PINCODE_TIERS = ["Tier1", "Tier2", "Tier3"]
 
-# Preset example orders -- for a live demo/recording, filling 8 form fields
-# on camera burns time and risks fumbling. Adjust these values if you find
-# better examples once exploring reason_code_reference.json further.
+# Preset example orders -- keeps the live demo to one click per order.
 PRESETS = {
     "-- Fill manually --": None,
     "High-risk example (COD, apparel, high discount, Tier3)": {
@@ -61,13 +55,8 @@ preset = PRESETS[preset_choice]
 st.subheader("Order details")
 col1, col2 = st.columns(2)
 
-# NOTE: every widget's `key` includes preset_choice. Without this, switching
-# the preset dropdown would NOT update these fields -- Streamlit only uses
-# `value=` the first time a widget is created and trusts its own state after
-# that. Tying the key to preset_choice forces a fresh widget (and therefore
-# a fresh default) whenever a different preset is picked, while still
-# letting you freely hand-edit a field without it resetting on unrelated
-# reruns.
+# Keys include preset_choice: Streamlit only applies `value=` on first
+# creation, so this forces fresh widgets (fresh defaults) on preset switch.
 with col1:
     category = st.selectbox(
         "Category", CATEGORIES,

@@ -4,8 +4,9 @@ import joblib
 import matplotlib.pyplot as plt
 from sklearn.metrics import precision_recall_curve
 from sklearn.calibration import calibration_curve
+from pathlib import Path
 
-OUT = "C:/Numair/Coding/Razorpay/outputs"
+OUT = str(Path(__file__).resolve().parent / "outputs")
 
 val_proba = np.load(f"{OUT}/val_proba_hgb.npy")
 val_y = np.load(f"{OUT}/val_y.npy")

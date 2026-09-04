@@ -1,16 +1,17 @@
 """
 verify_leakage_invariant.py
 =============================
-Run this against the FRESH data_orders.csv after regenerating it.
-Independently recomputes the expanding-window customer_past_return_rate
-and customer_prior_orders from scratch and checks it matches what's
-stored in the file, row by row. Also checks the stored values don't
-accidentally match the full-history (leaky) version instead.
+Run against the FRESH data_orders.csv after regenerating it. Independently
+recomputes the expanding-window customer_past_return_rate /
+customer_prior_orders from scratch and checks row-by-row against what's
+stored, plus checks the stored values don't accidentally match the
+full-history (leaky) version instead.
 """
 import pandas as pd
 import numpy as np
+from pathlib import Path
 
-DATA_PATH = "C:/Numair/Coding/Razorpay/data_orders.csv"
+DATA_PATH = str(Path(__file__).resolve().parent / "data_orders.csv")
 
 df = pd.read_csv(DATA_PATH, parse_dates=["order_date"])
 df = df.sort_values("order_date").reset_index(drop=True)

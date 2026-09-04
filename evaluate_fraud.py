@@ -2,10 +2,11 @@ import json
 import numpy as np
 import matplotlib.pyplot as plt
 from sklearn.metrics import precision_recall_curve
+from pathlib import Path
 
-OUT = "C:/Numair/Coding/Razorpay/outputs"
+OUT = str(Path(__file__).resolve().parent / "outputs")
 
-val_proba = np.load(f"{OUT}/val_proba_fraud.npy")
+val_proba_calibrated = np.load(f"{OUT}/val_proba_fraud_calibrated.npy")
 val_y = np.load(f"{OUT}/val_y_fraud.npy")
 test_proba = np.load(f"{OUT}/test_proba_fraud.npy")
 test_y = np.load(f"{OUT}/test_y_fraud.npy")
@@ -14,10 +15,8 @@ summary = json.load(open(f"{OUT}/summary_fraud.json"))
 COST_FN, COST_FP = summary["cost_fn"], summary["cost_fp"]
 best_t = summary["best_threshold"]
 
-# NOTE: no third (calibration) panel here -- see train_fraud.py's note on
-# why the reliability diagram isn't informative at this base rate/n_pos.
-# Brier scores (raw vs isotonic-calibrated) are reported in summary_fraud.json
-# instead.
+# No third (calibration) panel: reliability diagram isn't informative at
+# this base rate/n_pos -- see train_fraud.py. Brier scores are in summary_fraud.json.
 fig, axes = plt.subplots(1, 2, figsize=(11, 4.5))
 
 # --- 1. Precision-Recall curve (test set) ---
@@ -32,11 +31,11 @@ axes[0].set_title(f"Precision-Recall Curve (Test)\nPR-AUC={summary['test_prauc']
 axes[0].legend()
 axes[0].grid(alpha=0.3)
 
-# --- 2. Cost vs threshold (val set) ---
+# --- 2. Cost vs threshold (val set, calibrated scale -- matches train_fraud.py) ---
 thresholds = np.linspace(0.01, 0.99, 197)
 costs = []
 for t in thresholds:
-    pred = (val_proba >= t).astype(int)
+    pred = (val_proba_calibrated >= t).astype(int)
     fp = ((pred == 1) & (val_y == 0)).sum()
     fn = ((pred == 0) & (val_y == 1)).sum()
     costs.append(fp * COST_FP + fn * COST_FN)

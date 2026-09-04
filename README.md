@@ -110,6 +110,9 @@ Proportional customer scaling (2.73 orders/customer/year at 60k orders) validate
 ### Section 3.8 Serial-returner effect
 `customer_past_return_rate` layered as a serial-returner boost, informed by Signifyd's finding that ~11% of shoppers qualify as serial returners with 40–50%+ return rates [9-28,29,30].
 
+### Section 3.9 Festive-period effect
+`is_festive`, a general (not COD-specific) return-rate boost during known recurring Indian e-commerce sale windows (Independence Day, Diwali/Big Billion Days, Year-End, Republic Day, mid-year EORS). Calibrated conservatively against TrackVid's report that returns "can climb to 40% for some sellers" during festive sales [9-23] - treated as an upper bound for some sellers, not a population average or a target. Actual simulated uplift landed at 18.8% festive vs. 15.3% normal (~1.23x). Applied as a general effect rather than COD-specific, since the cited mechanism (impulse buying during flash sales) plausibly affects post-delivery prepaid regret too, and no source segmented this by payment mode. Window dates are approximate (coarse 10-25 day ranges), not verified against exact historical sale dates.
+
 ---
 
 ## 4. Defense-Only Statement
