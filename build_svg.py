@@ -79,8 +79,8 @@ text(RX + RW/2, 95, "SECONDARY ARTIFACT -- real fraud data (ULB)", size=12.5, we
 
 # ---------------------------------------------------------------- PRIMARY column
 y = 122
-code_box(LX, y, LW, 50, "generate_data.py", sub="synthetic 60k-order generator, cited India benchmarks")
-y2 = y + 50
+code_box(LX, y, LW, 54, "generate_data.py", sub="synthetic 60k-order generator, cited India benchmarks")
+y2 = y + 54
 arrow(LX+LW/2, y2, LX+LW/2, y2+20)
 y = y2 + 20
 
@@ -93,8 +93,8 @@ arrow(LX+LW, y+23, GX, y+23, color="#ca8a04", dash="4,3")
 arrow(LX+LW/2, data_y_end, LX+LW/2, data_y_end+20)
 y = data_y_end + 20
 
-code_box(LX, y, LW, 44, "features.py", sub="leakage-safe feature matrix (expanding-window)")
-y2 = y + 44
+code_box(LX, y, LW, 54, "features.py", sub="leakage-safe feature matrix (expanding-window)")
+y2 = y + 49
 arrow(LX+LW/2, y2, LX+LW/2, y2+20)
 y = y2 + 20
 
@@ -181,8 +181,8 @@ out2_end = y + 46
 y = out2_end + 20
 
 arrow(RX+RW/2, out2_end, RX+RW/2, out2_end+20)
-code_box(RX, y, RW, 44, "evaluate_fraud.py", sub="-> evaluation_plots_fraud.png")
-y2 = y + 44
+code_box(RX, y, RW, 54, "evaluate_fraud.py", sub="-> evaluation_plots_fraud.png")
+y2 = y + 54
 y = y2 + 20
 
 note_h = 54
@@ -222,7 +222,7 @@ svg = f'''<svg viewBox="0 0 {W} {H}" xmlns="http://www.w3.org/2000/svg" font-fam
 {"".join(parts)}
 </svg>'''
 
-with open("C:/Numair/Coding/Razorpay/architecture.svg", "w") as f:
+with open("C:/Numair/Coding/Razorpay/outputs/architecture.svg", "w") as f:
     f.write(svg)
 
 print("H =", H)
