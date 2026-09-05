@@ -83,6 +83,7 @@ Costs are USD-scale placeholders derived from the dataset's own `Amount` field -
 4. **Model.** HistGradientBoostingClassifier (primary), trained with damped segment-weighted sample weights (bucket-balanced across `payment_mode × returned`, exponent 0.3) - reduces missed prepaid returns relative to an unweighted baseline at a small cost increase. LogisticRegression and XGBoost trained alongside as interpretable/comparison references.
 5. **Threshold selection & calibration.** Threshold chosen via macro-cost grid search (mean of COD and Prepaid cost-per-order, not blended total - blended cost systematically favors the majority segment by volume). Isotonic calibration is fit **before** threshold selection, and the threshold is searched on calibrated probabilities - this ordering was a real bug we found and fixed mid-project (previously calibration was fit after the search, so the decision threshold and the probability shown in the demo were on different scales). The macro-searched threshold (0.110) was validated against the closed-form cost-optimal threshold for well-calibrated probabilities, `COST_FP/(COST_FP+COST_FN) = 0.122` - the two are close, supporting that the fix worked.
 6. **Serving & reason codes.** FastAPI service (`serve.py`) with a two-tier response controlled by `reviewer_view` - see [Section 4](#4-defense-only-statement). Reason codes are permutation-importance-ranked, direction-aware (does this order's value sit on the risk-elevating side of the training midpoint), not SHAP - deliberately coarse, FICO-adverse-action-code style, not a raw model-internals dump.
+7. **Demo.** `app.py` (Streamlit) provides three preset orders for quick reviewer walkthrough: a high-risk COD example (apparel, Tier-3, high discount, elevated product-level return history), a low-risk Prepaid example (electronics, Tier-1, clean product history), and a bracketed example (Prepaid, apparel, 3 sizes ordered, elevated product-level return history) demonstrating the bracketing feature and listing-level history feature together. All three send requests to `serve.py`'s `/score` endpoint and display both the checkout-facing and reviewer-facing response shapes side by side.
 
 ---
 
@@ -220,6 +221,8 @@ python evaluate_fraud.py
 uvicorn serve:app --reload --port 8000     # terminal 1
 streamlit run app.py                        # terminal 2
 ```
+
+**Windows convenience option:** `start_returnguard.bat` automates step 6 - creates/activates the venv and installs dependencies if needed, starts the FastAPI backend, polls its `/health` endpoint until it's actually ready (rather than a blind fixed wait), then starts the Streamlit demo. Run it from the repo root; it opens both processes in separate windows, which must be closed manually when done.
 
 All model artifacts (`*.joblib`, `*.npy`) are gitignored and regenerable by re-running the above - they are not committed to keep the repo lightweight.
 
