@@ -34,19 +34,19 @@ PRESETS = {
         "category": "Fashion", "price": 899.0, "discount_pct": 60.0,
         "payment_mode": "COD", "pincode_tier": "Tier3", "delivery_days": 6.0,
         "customer_prior_orders": 2, "customer_past_return_rate": 0.4,
-        "is_bracketed": False, "size_variant_count": 1,
+        "is_bracketed": False, "size_variant_count": 1, "product_past_return_rate": 0.32,
     },
     "Low-risk example (Prepaid, electronics, no discount, Tier1)": {
         "category": "Electronics", "price": 4500.0, "discount_pct": 5.0,
         "payment_mode": "Prepaid", "pincode_tier": "Tier1", "delivery_days": 2.0,
         "customer_prior_orders": 5, "customer_past_return_rate": 0.0,
-        "is_bracketed": False, "size_variant_count": 1,
+        "is_bracketed": False, "size_variant_count": 1, "product_past_return_rate": 0.03,
     },
     "Bracketed example (Prepaid, apparel, 3 sizes ordered)": {
         "category": "Fashion", "price": 1200.0, "discount_pct": 15.0,
         "payment_mode": "Prepaid", "pincode_tier": "Tier1", "delivery_days": 3.0,
         "customer_prior_orders": 4, "customer_past_return_rate": 0.1,
-        "is_bracketed": True, "size_variant_count": 3,
+        "is_bracketed": True, "size_variant_count": 3, "product_past_return_rate" : 0.35,
     },
 }
 preset_choice = st.selectbox("Load an example order", list(PRESETS.keys()))
@@ -82,6 +82,11 @@ with col1:
         "Bracketed (multiple sizes/colors ordered together)",
         value=preset.get("is_bracketed", False) if preset else False,
         key=f"bracket_{preset_choice}",
+    )
+    product_past_return_rate = st.slider(
+        "This product's historical return rate", 0.0, 1.0,
+        preset.get("product_past_return_rate", 0.16) if preset else 0.16,
+        key=f"product_rate_{preset_choice}",
     )
 
 with col2:
@@ -121,6 +126,7 @@ order_payload = {
     "customer_past_return_rate": customer_past_return_rate,
     "is_bracketed" : is_bracketed,
     "size_variant_count" : size_variant_count,
+    "product_past_return_rate": product_past_return_rate,
 }
 
 if st.button("Score this order", type="primary"):
