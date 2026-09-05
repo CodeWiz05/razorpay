@@ -245,9 +245,48 @@ perm_result = permutation_importance(
 importances = perm_result.importances_mean
 
 reason_reference = {}
+
+# Direction/midpoint computed as MACRO-averaged conditional means (mean
+# across COD and Prepaid segments, then averaged) rather than one pooled
+# marginal split. A pooled split is confounded by payment_mode for any
+# feature that interacts with it: is_bracketed only exists in Prepaid
+# apparel orders, but Prepaid's much lower baseline return rate swamps
+# the real within-segment effect in a pooled comparison (Simpson's
+# paradox) -- this silently flipped is_bracketed's stored direction to
+# "low", so a NON-bracketed order (value=0) was being labeled as elevated
+# risk. Same macro-not-blended principle already used for cost-optimal
+# threshold selection, applied here for consistency. See README Section 5
+# for the bug this fixes.
+#
+# EXCEPTION: payment_mode_COD / payment_mode_Prepaid keep the original
+# pooled calculation -- segmenting by payment_mode and then asking for
+# payment_mode's own conditional mean within that segment is tautological
+# (every COD row has payment_mode_COD=1 by definition), so macro-averaging
+# those two specifically would produce a degenerate 0.5/0.5 split.
+SEGMENT_MASKS = [
+    (Xtr["payment_mode_COD"] == True).values,
+    (Xtr["payment_mode_Prepaid"] == True).values,
+]
+
+
+def macro_conditional_means(feat):
+    means_ret, means_not = [], []
+    for mask in SEGMENT_MASKS:
+        seg_y = ytr.values[mask]
+        seg_x = Xtr.loc[mask, feat].values
+        if (seg_y == 1).sum() > 0:
+            means_ret.append(seg_x[seg_y == 1].mean())
+        if (seg_y == 0).sum() > 0:
+            means_not.append(seg_x[seg_y == 0].mean())
+    return sum(means_ret) / len(means_ret), sum(means_not) / len(means_not)
+
+
 for i, feat in enumerate(feature_cols):
-    mean_returned = Xtr.loc[ytr == 1, feat].mean()
-    mean_not_returned = Xtr.loc[ytr == 0, feat].mean()
+    if feat in ("payment_mode_COD", "payment_mode_Prepaid"):
+        mean_returned = Xtr.loc[ytr == 1, feat].mean()
+        mean_not_returned = Xtr.loc[ytr == 0, feat].mean()
+    else:
+        mean_returned, mean_not_returned = macro_conditional_means(feat)
     direction = "high" if mean_returned >= mean_not_returned else "low"
     reason_reference[feat] = {
         "importance": float(importances[i]),
