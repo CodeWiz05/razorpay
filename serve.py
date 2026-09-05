@@ -64,6 +64,7 @@ LABELS = {
     "is_bracketed": "Multi-size/color bracket order",
     "size_variant_count": "Multiple size/color variants ordered together",
     "is_festive": "Order placed during a festive sale period",
+    "product_past_return_rate": "This product's own history of returns",
 }
 
 app = FastAPI(title="Return-Risk Scorer")
@@ -81,6 +82,7 @@ class Order(BaseModel):
     is_bracketed: bool = Field(default=False)
     size_variant_count: int = Field(default=1, ge=1)
     order_date: Optional[str] = Field(default=None, description="ISO date; omit to assume non-festive")
+    product_past_return_rate: float = Field(default=0.16, ge=0, le=1)  # cold-start prior, matches generate_data.py
 
 # Duplicated from generate_data.py, same reasoning as APPAREL_CATEGORIES above
 FESTIVE_WINDOWS = [
@@ -117,6 +119,7 @@ def build_feature_row(order: Order) -> pd.DataFrame:
         "is_bracketed": int(order.is_bracketed),
         "size_variant_count": order.size_variant_count,
         "is_festive": compute_is_festive(order.order_date),
+        "product_past_return_rate": order.product_past_return_rate,
     }
     df = pd.DataFrame([row])
     return df.reindex(columns=feature_cols, fill_value=0)
