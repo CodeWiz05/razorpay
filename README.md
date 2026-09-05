@@ -51,7 +51,7 @@ This table reflects two changes together, not one: a data-generation bug fix (CO
 
 This asymmetry is real, understood, and discussed honestly in [Section 6](#6-known-limitations) - it is not hidden or explained away.
 
-(Outputs/evaluation_plots.png)
+![Evaluation Plots](Outputs/evaluation_plots.png)
 *(Plot: `Outputs/evaluation_plots.png` - precision-recall curve, cost-vs-threshold curve, calibration reliability diagram)*
 
 ### Secondary artifact - Fraud detector (real data: ULB `creditcard.csv`, 284,807 transactions)
